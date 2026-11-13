@@ -4,6 +4,10 @@
 
 一款原创的网页文字修仙游戏。无需安装、无需后端、无需联网，打开浏览器就能从炼气一层一路走到羽化飞升。界面针对手机竖屏做了完整适配，同时保留了桌面端的双栏布局。
 
+> **在线试玩**：<https://hhanvi.github.io/yinian-changsheng/>
+>
+> 直接把这个链接发给朋友，手机浏览器打开即可开始。
+
 <p align="center"><img src="assets/screenshot-mobile.jpg" alt="手机端界面" width="320"></p>
 <p align="center"><img src="assets/screenshot-desktop.jpg" alt="桌面端界面" width="800"></p>
 
