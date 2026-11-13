@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0%" stop-color="#183128"/>
+      <stop offset="100%" stop-color="#08100d"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e6ce97"/>
+      <stop offset="100%" stop-color="#b9975c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="url(#gold)" stroke-opacity=".45" stroke-width="4"/>
+  <circle cx="350" cy="152" r="38" fill="#d8bd82" opacity=".85"/>
+  <path d="M40 380 150 268 206 320 300 214 396 324 472 268v132H40Z" fill="#1d4336" opacity=".9"/>
+  <path d="M40 410 128 350 214 392 310 322 408 396 472 360v86H40Z" fill="#0f2820"/>
+  <path d="M46 402c60-10 96-6 150 2s118 10 200-4" fill="none" stroke="#7fa990" stroke-opacity=".35" stroke-width="3"/>
+  <rect x="196" y="176" width="120" height="120" rx="14" fill="#9d3c2e" transform="rotate(-6 256 236)"/>
+  <text x="253" y="264" text-anchor="middle" font-family="Songti SC, SimSun, serif" font-size="76" fill="#f3e3c2" transform="rotate(-6 253 240)">念</text>
+</svg>
