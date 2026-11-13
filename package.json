@@ -1,8 +1,8 @@
 {
   "name": "yinian-changsheng",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "一念长生：适配手机的文字修仙游戏",
+  "description": "一念长生 · 宗门篇：适配手机的宗门修仙模拟游戏",
   "scripts": {
     "start": "node server.js",
     "test": "node tests/engine.test.js"

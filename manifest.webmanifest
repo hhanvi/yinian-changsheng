@@ -1,15 +1,19 @@
 {
-  "name": "一念长生 · 文字修仙",
+  "name": "一念长生 · 宗门篇",
   "short_name": "一念长生",
-  "description": "一款适配手机的文字修仙游戏。打坐、历练、突破、炼丹，从炼气到飞升。",
+  "description": "经营山门、培养弟子、布局风水、炼丹参研、下山历练。一款适配手机的宗门修仙模拟游戏。",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0b1210",
-  "theme_color": "#0b1210",
+  "background_color": "#e8dec9",
+  "theme_color": "#e8dec9",
   "lang": "zh-CN",
   "icons": [
     { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ],
+  "screenshots": [
+    { "src": "assets/screenshot-mobile.jpg", "sizes": "390x844", "type": "image/jpeg", "form_factor": "narrow" },
+    { "src": "assets/screenshot-desktop.jpg", "sizes": "1440x1100", "type": "image/jpeg", "form_factor": "wide" }
   ]
 }

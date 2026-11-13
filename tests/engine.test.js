@@ -1,19 +1,13 @@
-/* 引擎逻辑测试：不依赖浏览器，可在 Node 中直接运行。 */
+/*
+ * 一念长生 · 宗门篇 · 引擎测试
+ * 运行：npm test
+ */
 'use strict';
 
 var assert = require('assert');
-var path = require('path');
-
-/* localStorage stub */
-var store = {};
-global.localStorage = {
-  getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
-  setItem: function (k, v) { store[k] = String(v); },
-  removeItem: function (k) { delete store[k]; }
-};
-
-var D = require(path.join(__dirname, '..', 'js', 'data.js'));
-var E = require(path.join(__dirname, '..', 'js', 'engine.js'));
+var D = require('../js/data.js');
+var EV = require('../js/events.js');
+var E = require('../js/engine.js');
 
 var passed = 0;
 function test(name, fn) {
@@ -22,421 +16,295 @@ function test(name, fn) {
     passed++;
     console.log('  ok  ' + name);
   } catch (err) {
-    console.error('FAIL  ' + name);
-    console.error(err && err.stack ? err.stack : err);
+    console.error('  FAIL ' + name);
+    console.error(err.stack || err);
     process.exitCode = 1;
   }
 }
 
-function newState(overrides) {
-  var s = E.newGame({
-    name: '测试者',
-    root: 'fire',
-    origin: 'clan',
-    daoheart: 'sword'
-  });
-  if (overrides) Object.keys(overrides).forEach(function (k) { s[k] = overrides[k]; });
-  return s;
+function newState(seed) {
+  return E.newGame({ seed: seed || 42, sectName: '青崖宗', playerName: '沈未央', origin: 'clan', root: 'water' });
 }
 
-console.log('\n== 数据完整性 ==');
-
-test('事件引用的物品与敌人存在', function () {
-  var stats = ['comp', 'sense', 'luck'];
-  D.EVENTS.forEach(function (ev) {
-    assert(ev.id && ev.name && ev.text, '事件缺少字段: ' + ev.id);
-    assert(ev.region === 'any' || D.REGIONS.some(function (r) { return r.id === ev.region; }), '未知区域: ' + ev.id);
-    assert(ev.choices && ev.choices.length >= 2, '事件选项不足: ' + ev.id);
-    ev.choices.forEach(function (c, i) {
-      assert(c.label, ev.id + ' 选项缺少文案');
-      if (c.check) {
-        assert(stats.indexOf(c.check.stat) !== -1, ev.id + ' 检定属性非法');
-        assert(c.success && c.fail, ev.id + ' 检定缺少结果');
-      } else {
-        assert(c.outcome, ev.id + ' 选项缺少 outcome');
-      }
-      [c.outcome, c.success, c.fail].filter(Boolean).forEach(function (o) {
-        if (o.combat) assert(D.ENEMIES[o.combat], ev.id + ' 未知敌人: ' + o.combat);
-        if (o.items) o.items.forEach(function (it) { assert(D.ITEMS[it.id], ev.id + ' 未知物品: ' + it.id); });
-        if (o.consume) o.consume.forEach(function (it) { assert(D.ITEMS[it.id], ev.id + ' 未知消耗品: ' + it.id); });
-        if (o.technique) assert(D.TECHNIQUES[o.technique], ev.id + ' 未知功法');
-        if (o.req) assert(o.req.item ? D.ITEMS[o.req.item] : true, ev.id + ' 需求物品不存在');
-      });
-      if (c.req && c.req.item) assert(D.ITEMS[c.req.item], ev.id + ' req 物品不存在');
-    });
-  });
-});
-
-test('丹方材料与产出存在', function () {
-  D.RECIPES.forEach(function (r) {
-    assert(D.ITEMS[r.out.id], r.id + ' 产出不存在');
-    Object.keys(r.mats).forEach(function (id) { assert(D.ITEMS[id], r.id + ' 材料不存在: ' + id); });
-  });
-});
-
-test('所有功法技能存在', function () {
-  Object.keys(D.TECHNIQUES).forEach(function (id) {
-    var t = D.TECHNIQUES[id];
-    assert(D.SKILLS[t.skill], id + ' 技能不存在');
-  });
-});
-
-console.log('\n== 角色与属性 ==');
-
-test('新游戏初始化', function () {
-  var s = newState();
-  assert(s.player.name === '测试者');
-  assert(s.player.realm === 0 && s.player.layer === 0);
-  assert(s.player.hp === E.derived(s).hpMax, '气血未满');
-  assert(s.player.mp === E.derived(s).mpMax, '灵力未满');
-  assert(s.player.inventory.length > 0, '初始物品为空');
-  assert(s.player.stones > 0);
-  assert(E.expNeed(s) > 0);
-});
-
-test('不同灵根与出身产生不同属性', function () {
-  var fire = E.newGame({ name: '火', root: 'fire', origin: 'clan', daoheart: 'sword' });
-  var earth = E.newGame({ name: '土', root: 'earth', origin: 'orphan', daoheart: 'mercy' });
-  var df = E.derived(fire);
-  var de = E.derived(earth);
-  assert(df.atk > de.atk, '火灵根攻击应更高');
-  assert(de.hpMax > 0 && df.hpMax > 0);
-  assert(fire.player.stones !== earth.player.stones);
-});
-
-test('装备与卸下不丢失物品，并生效属性', function () {
-  var s = newState();
-  E.addItem(s, 'qingfeng', 1);
-  var before = E.countItem(s, 'qingfeng');
-  var atkBefore = E.derived(s).atk;
-  E.equipItem(s, 'qingfeng');
-  assert(s.player.equipment.weapon === 'qingfeng');
-  assert(E.countItem(s, 'qingfeng') === before - 1);
-  assert(E.derived(s).atk > atkBefore, '装备后攻击应提升');
-  E.unequipItem(s, 'weapon');
-  assert(s.player.equipment.weapon === null);
-  assert(E.countItem(s, 'qingfeng') === before);
-  assert(E.derived(s).atk === atkBefore, '卸下后攻击应还原');
-});
-
-test('轮回印记提供初始加成', function () {
-  localStorage.removeItem(D.META_KEY);
-  var plain = E.newGame({ name: '甲', root: 'fire', origin: 'herb', daoheart: 'sword' });
-  localStorage.setItem(D.META_KEY, JSON.stringify({ ascensions: 3, bestRealm: 9, lastName: '旧人' }));
-  var legacy = E.newGame({ name: '乙', root: 'fire', origin: 'herb', daoheart: 'sword' });
-  assert(legacy.player.base.comp === plain.player.base.comp + 3);
-  assert(legacy.player.base.luck === plain.player.base.luck + 3);
-  assert(legacy.player.stones === plain.player.stones + 150);
-  localStorage.removeItem(D.META_KEY);
-});
-
-test('功法切换提升修炼效率', function () {
-  var s = newState();
-  var r1 = E.derived(s).rate;
-  s.player.learned.push('fenyu');
-  E.equipTechnique(s, 'fenyu');
-  var r2 = E.derived(s).rate;
-  assert(r2 > r1, '换功法后修炼速度应提升');
-});
-
-console.log('\n== 修炼与突破 ==');
-
-test('打坐增加修为并消耗时间', function () {
-  var s = newState();
-  var age = s.player.ageMonths;
-  var res = E.meditate(s);
-  assert(res.ok && res.gain > 0);
-  assert(s.player.ageMonths === age + 1);
-  assert(s.player.exp === res.gain);
-  assert(s.stats.meditations === 1);
-});
-
-test('突破成功提升境界并重置修为', function () {
-  var s = newState();
-  var savedRandom = Math.random;
-  Math.random = function () { return 0; }; // 必成
-  s.player.exp = E.expNeed(s);
-  var res = E.breakthrough(s, false);
-  Math.random = savedRandom;
-  assert(res.ok && res.success);
-  assert(s.player.layer === 1);
-  assert(s.player.exp === 0);
-  assert(s.player.hp === E.derived(s).hpMax);
-  assert(s.stats.breakthroughs === 1);
-});
-
-test('修为已满时不能再打坐浪费时光', function () {
-  var s = newState();
-  s.player.exp = E.expNeed(s);
-  var res = E.meditate(s);
-  assert(!res.ok);
-  var res2 = E.closedCultivation(s);
-  assert(!res2.ok);
-});
-
-test('突破失败损失修为', function () {
-  var s = newState();
-  var savedRandom = Math.random;
-  Math.random = function () { return 0.999; }; // 必败
-  s.player.exp = E.expNeed(s);
-  var res = E.breakthrough(s, false);
-  Math.random = savedRandom;
-  assert(res.ok && !res.success);
-  assert(s.player.exp < E.expNeed(s));
-  assert(s.player.breakthroughBuff > 0);
-});
-
-test('破境丹提升成功率并被消耗', function () {
-  var s = newState();
-  E.addItem(s, 'pojing', 1);
-  var c1 = E.breakthroughChance(s, false);
-  var c2 = E.breakthroughChance(s, true);
-  assert(c2 > c1, '服用破境丹后成功率应提升');
-  assert(Math.abs(c2 - Math.min(0.95, c1 + 0.25)) < 1e-9, '概率加成不正确');
-  s.player.exp = E.expNeed(s);
-  var savedRandom = Math.random;
-  Math.random = function () { return 0; };
-  var res = E.breakthrough(s, true);
-  Math.random = savedRandom;
-  assert(res.usedPill);
-  assert(E.countItem(s, 'pojing') === 0);
-});
-
-test('完整突破路线可抵达飞升', function () {
-  var s = newState();
-  s.player.hp = E.derived(s).hpMax;
-  var guard = 0;
-  while (!s.player.ascended && guard++ < 80) {
-    s.player.hp = E.derived(s).hpMax;
-    s.player.mp = E.derived(s).mpMax;
-    s.player.exp = E.expNeed(s);
-    var savedRandom = Math.random;
-    Math.random = function () { return 0; };
-    var res = E.breakthrough(s, false);
-    Math.random = savedRandom;
-    assert(res.ok, '突破失败: ' + JSON.stringify(res));
-    if (res.tribulation) {
-      assert(s.battle, '未触发天劫战斗');
-      assert(s.battle.enemy.tribulation);
-      s.battle.enemy.hp = 1;
-      var saved2 = Math.random;
-      Math.random = function () { return 0; };
-      E.battleAction(s, 'attack');
-      Math.random = saved2;
-      assert(s.player.ascended, '渡过天劫后应飞升');
-      assert(s.ended === 'ascended');
-      E.endBattle(s);
-    }
-  }
-  assert(s.player.ascended, '未能飞升');
-  assert(s.player.realm === D.REALMS.length - 1);
-  assert(s.achievements.ascend, '飞升成就未解锁');
-  assert(guard < 80);
-});
-
-test('年龄超过寿元会坐化', function () {
-  var s = newState();
-  s.player.ageMonths = s.player.lifespan * 12 - 1;
-  E.advanceTime(s, 2);
-  assert(s.ended === 'death');
-  assert(s.player.dead);
-});
-
-console.log('\n== 历练与战斗 ==');
-
-test('历练返回合法事件并消耗时间', function () {
-  var s = newState();
-  var before = s.player.ageMonths;
-  var res = E.explore(s, 'luoxia');
-  assert(res.ok && res.event);
-  assert(s.player.ageMonths >= before + 1);
-  assert(s.world.recentEvents[0] === res.event.id);
-});
-
-test('未解锁区域不可进入', function () {
-  var s = newState();
-  var res = E.explore(s, 'jiuyou');
-  assert(!res.ok);
-});
-
-test('所有事件选项均可结算', function () {
-  var s = newState();
-  s.player.realm = 3;
-  s.player.layer = 0;
-  s.player.stones = 5000;
-  D.EVENTS.forEach(function (ev) {
-    ev.choices.forEach(function (c, i) {
-      /* 保证需求物品存在 */
-      if (c.req && c.req.item) E.addItem(s, c.req.item, 5);
-      if (c.consume) c.consume.forEach(function (x) { E.addItem(s, x.id, 5); });
-      var savedRandom = Math.random;
-      Math.random = function () { return 0.5; };
-      s.world.currentRegion = ev.region === 'any' ? 'luoxia' : ev.region;
-      var r = E.resolveChoice(s, ev, i);
-      Math.random = savedRandom;
-      assert(r.ok, ev.id + ' 选项 ' + i + ' 结算失败: ' + (r.error || ''));
-      if (s.battle) { s.battle = null; }
-      if (s.ended) { s.ended = null; }
-    });
-  });
-});
-
-test('战斗胜利给予奖励', function () {
-  var s = newState();
-  s.world.currentRegion = 'luoxia';
-  var b = E.startBattle(s, 'wolf', 'luoxia', { noElite: true });
-  b.enemy.hp = 1;
-  var saved = Math.random;
-  Math.random = function () { return 0; };
-  var res = E.battleAction(s, 'attack');
-  Math.random = saved;
-  assert(res.result === 'win');
-  assert(b.rewards.exp > 0 && b.rewards.stones > 0);
-  assert(s.stats.wins === 1);
-  E.endBattle(s);
-});
-
-test('战败不会死亡，损失部分修为与灵石', function () {
-  var s = newState();
-  s.player.exp = 10;
-  s.player.stones = 100;
-  s.world.currentRegion = 'luoxia';
-  var b = E.startBattle(s, 'wolf', 'luoxia', { noElite: true });
-  s.player.hp = 1;
-  b.enemy.atk = 100000;
-  E.battleAction(s, 'flee');
-  if (!b.over) {
-    /* flee 成功则再打一场强制失败 */
-    E.endBattle(s);
-    b = E.startBattle(s, 'wolf', 'luoxia', { noElite: true });
-    s.player.hp = 1;
-    b.enemy.atk = 100000;
-    E.battleAction(s, 'attack');
-  }
-  if (b.result === 'lose') {
-    assert(!s.player.dead);
-    assert(s.player.stones < 100);
-    assert(s.player.hp > 0);
-    assert(s.stats.defeats === 1);
-  }
-  E.endBattle(s);
-});
-
-test('修为已满时不能服用聚气丹', function () {
-  var s = newState();
-  E.addItem(s, 'juqi', 1);
-  var before = E.countItem(s, 'juqi');
-  s.player.exp = E.expNeed(s);
-  var res = E.useItem(s, 'juqi');
-  assert(!res.ok);
-  assert(E.countItem(s, 'juqi') === before, '丹药不应被消耗');
-});
-
-test('小境界突破增加两年寿元', function () {
-  var s = newState();
-  var life = s.player.lifespan;
-  s.player.exp = E.expNeed(s);
-  var saved = Math.random;
-  Math.random = function () { return 0; };
-  var res = E.breakthrough(s, false);
-  Math.random = saved;
-  assert(res.success);
-  assert(s.player.lifespan === life + 2, '小境界应增加两年寿元');
-});
-
-test('丹药可在战斗中使用', function () {
-  var s = newState();
-  s.world.currentRegion = 'luoxia';
-  E.addItem(s, 'huichun', 1);
-  var b = E.startBattle(s, 'wolf', 'luoxia', { noElite: true });
-  s.player.hp = 10;
-  var res = E.battleAction(s, 'pill', 'huichun');
-  assert(res.ok);
-  assert(s.player.hp > 10);
-  assert(E.countItem(s, 'huichun') === 0);
-  E.endBattle(s);
-});
-
-console.log('\n== 坊市与炼丹 ==');
-
-test('坊市生成货物、买入与卖出', function () {
-  var s = newState();
-  s.player.stones = 10000;
-  assert(s.world.stock.length > 0);
-  var entry = s.world.stock.find(function (x) { return !x.sold; });
-  assert(entry);
-  var res = E.buyStock(s, s.world.stock.indexOf(entry));
-  assert(res.ok);
-  assert(entry.sold);
-  if (res.type === 'item') {
-    assert(E.countItem(s, entry.itemId) >= 1);
-    var sell = E.sellItem(s, entry.itemId, 1);
-    assert(sell.ok && sell.stones > 0);
-  }
-});
-
-test('低境界坊市不会出现离谱的高阶货', function () {
-  var s = newState();
-  s.world.marketSeed = 3;
-  s.world.marketBucket = -1;
-  E.ensureMarket(s);
-  s.world.stock.forEach(function (entry) {
-    var it = entry.kind === 'tech' ? D.TECHNIQUES[entry.itemId] : D.ITEMS[entry.itemId];
-    assert(it, '货架物品不存在');
-    assert(it.rarity <= 2, '低境界货架出现高阶物品: ' + it.name);
-  });
-});
-
-test('坊市刷新消耗灵石', function () {
-  var s = newState();
-  s.player.stones = 10000;
-  var before = s.player.stones;
-  var res = E.refreshMarket(s, true);
-  assert(res.ok);
-  assert(s.player.stones < before);
-  assert(s.world.stock.length > 0);
-});
-
-test('炼丹消耗材料并按成功率产出', function () {
-  var s = newState();
-  E.addItem(s, 'lingcao', 4);
-  var saved = Math.random;
-  Math.random = function () { return 0; };
-  var res = E.craft(s, 'craft_huichun');
-  Math.random = saved;
-  assert(res.ok);
-  assert(res.success);
-  assert(E.countItem(s, 'huichun') >= 1);
-  assert(s.stats.crafts === 1);
-});
-
-console.log('\n== 成就与存档 ==');
-
-test('成就解锁并发放奖励', function () {
-  var s = newState();
-  var before = s.player.stones;
-  E.meditate(s);
-  var unlocked = E.checkAchievements(s);
-  assert(s.achievements.first_step);
-  assert(s.player.stones > before);
-});
-
-test('存档、读档往返一致', function () {
-  var s = newState();
-  E.meditate(s);
-  assert(E.save(s));
-  var loaded = E.load();
-  assert(loaded);
-  assert(loaded.player.name === s.player.name);
-  assert(loaded.player.exp === s.player.exp);
-  assert(loaded.stats.meditations === s.stats.meditations);
-  assert(loaded.journal.length === s.journal.length);
-  E.deleteSave();
-});
-
-console.log('\n' + passed + ' tests passed');
-if (process.exitCode) {
-  console.error('Some tests failed.');
-} else {
-  console.log('All tests passed.');
+function clearPending(state) {
+  state.pendingEvent = null;
+  state.pendingResult = null;
+  state.pendingReport = null;
+  state.reportQueue = [];
 }
+
+console.log('\n一念长生 · 引擎测试\n');
+
+test('地图尺寸与地形数据完整', function () {
+  assert.strictEqual(D.MAP.length, D.MAP_H);
+  D.MAP.forEach(function (row) { assert.strictEqual(row.length, D.MAP_W); });
+  assert.ok(D.MAP.join('').indexOf('S') >= 0, '应有灵脉');
+});
+
+test('新游戏生成宗门、掌门与外门弟子', function () {
+  var s = newState();
+  assert.strictEqual(s.version, 2);
+  assert.strictEqual(s.sectName, '青崖宗');
+  assert.strictEqual(s.disciples.length, 4);
+  assert.strictEqual(s.buildings.length, 7);
+  assert.strictEqual(E.player(s).role, 'inner');
+  assert.strictEqual(E.outerDisciples(s).length, 3);
+  assert.ok(s.resources.food > 0);
+  assert.ok(E.sectStats(s).aura > 0);
+});
+
+test('日期按 360 日一年推进，季节正确', function () {
+  var s = newState();
+  var d = E.getDate(s);
+  assert.strictEqual(d.year, 1);
+  assert.strictEqual(d.month, 1);
+  assert.strictEqual(d.season.key, 'spring');
+  s.day = 100;
+  assert.strictEqual(E.getDate(s).month, 4);
+  assert.strictEqual(E.getDate(s).season.key, 'summer');
+  s.day = 361;
+  assert.strictEqual(E.getDate(s).year, 2);
+});
+
+test('时间推进带来生产、消耗与修炼', function () {
+  var s = newState();
+  var food0 = s.resources.food;
+  var exp0 = E.player(s).exp;
+  E.tick(s);
+  assert.strictEqual(s.day, 2);
+  assert.ok(s.resources.food !== food0);
+  assert.ok(E.player(s).exp >= exp0);
+  assert.ok(s.resources.herbs > 0);
+});
+
+test('灵田无人当值时停止产出', function () {
+  var s = newState();
+  var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
+  var d = E.discipleById(s, farm.workers[0]);
+  E.assign(s, d.id, null);
+  assert.strictEqual(farm.workers.length, 0);
+  var before = s.resources.food;
+  E.tick(s);
+  // 仍会消耗食物，但不会增加灵田产出
+  assert.ok(s.resources.food < before);
+});
+
+test('建造建筑、扣费与落成', function () {
+  var s = newState();
+  var wood = s.resources.wood;
+  var res = E.build(s, 'library', 8, 2);
+  assert.ok(res.ok);
+  assert.ok(s.resources.wood < wood);
+  assert.ok(res.building.construction > 0);
+  clearPending(s);
+  for (var i = 0; i < 5; i++) { E.tick(s); clearPending(s); }
+  assert.strictEqual(res.building.construction, 0);
+});
+
+test('不能重叠建造，也不能在不可建地形建造', function () {
+  var s = newState();
+  assert.strictEqual(E.build(s, 'dorm', 3, 5).ok, false);
+  assert.strictEqual(E.build(s, 'dorm', 0, 0).ok, false);
+});
+
+test('外门弟子不能进静室，内门弟子不能做粗活', function () {
+  var s = newState();
+  var outer = E.outerDisciples(s)[0];
+  var med = s.buildings.find(function (b) { return b.type === 'meditation'; });
+  assert.strictEqual(E.assign(s, outer.id, med.id).ok, false);
+  var player = E.player(s);
+  var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
+  assert.strictEqual(E.assign(s, player.id, farm.id).ok, false);
+});
+
+test('外门弟子达到炼气三层可晋升内门', function () {
+  var s = newState();
+  var d = E.outerDisciples(s)[0];
+  d.realm = 0;
+  d.layer = 2;
+  s.resources.stones = 200;
+  var before = s.resources.stones;
+  var res = E.promote(s, d.id);
+  assert.ok(res.ok);
+  assert.strictEqual(d.role, 'inner');
+  assert.ok(s.resources.stones < before);
+  assert.strictEqual(s.stats.promoted, 1);
+});
+
+test('境界需求、突破概率与战力计算', function () {
+  var s = newState();
+  var d = E.player(s);
+  assert.ok(E.expNeed(d) > 0);
+  assert.ok(E.breakChance(d, s) > 0 && E.breakChance(d, s) <= 1);
+  assert.ok(E.power(d, s) > 0);
+  d.realm = 2;
+  d.layer = 1;
+  assert.ok(E.power(d, s) > 100);
+  assert.ok(E.lifespanOf(d) > 100);
+});
+
+test('修为足够时自动突破会推进层数或记录失败', function () {
+  var s = newState();
+  var d = E.player(s);
+  d.mood = 100;
+  d.exp = E.expNeed(d);
+  var before = { realm: d.realm, layer: d.layer };
+  clearPending(s);
+  E.tick(s);
+  assert.ok(d.realm > before.realm || d.layer > before.layer || d.exp < E.expNeed(d));
+});
+
+test('参研消耗悟道并解锁聚灵阵', function () {
+  var s = newState();
+  s.insight = 300;
+  assert.ok(E.researchNode(s, 'lingzhi').ok);
+  assert.ok(E.researchNode(s, 'zhenfa').ok);
+  assert.ok(E.hasResearch(s, 'zhenfa'));
+  assert.ok(s.insight < 300);
+  var res = E.build(s, 'array', 8, 2);
+  assert.ok(res.ok);
+});
+
+test('聚灵阵未参研时不可建造', function () {
+  var s = newState();
+  var res = E.build(s, 'array', 8, 2);
+  assert.strictEqual(res.ok, false);
+});
+
+test('坊市买卖与库存变化', function () {
+  var s = newState();
+  s.resources.stones = 1000;
+  var idx = s.market.stock.findIndex(function (it) { return it.kind === 'resource'; });
+  assert.ok(idx >= 0);
+  var item = s.market.stock[idx];
+  var before = s.resources[item.id] || 0;
+  var res = E.marketBuy(s, idx, 1);
+  assert.ok(res.ok);
+  assert.strictEqual(s.resources[item.id], before + 1);
+  var sold = E.marketSell(s, 'wood', 5);
+  assert.ok(sold.ok);
+});
+
+test('招徒候选与入门', function () {
+  var s = newState();
+  s.resources.stones = 100;
+  var r = E.recruitCandidates(s);
+  assert.ok(r.ok);
+  assert.ok(r.candidates.length >= 2);
+  var d = r.candidates[0];
+  var n = s.disciples.length;
+  assert.ok(E.chooseRecruit(s, d.id).ok);
+  assert.strictEqual(s.disciples.length, n + 1);
+  assert.strictEqual(s.stats.recruited, 1);
+});
+
+test('丹药服用生效', function () {
+  var s = newState();
+  var d = E.player(s);
+  d.health = 40;
+  d.injury = 30;
+  var n = s.pills.huichun;
+  var res = E.usePill(s, d.id, 'huichun');
+  assert.ok(res.ok);
+  assert.ok(d.health > 40);
+  assert.strictEqual(s.pills.huichun, n - 1);
+});
+
+test('历练派遣与归来报告', function () {
+  var s = newState();
+  var d = E.outerDisciples(s)[0];
+  var res = E.startMission(s, 'backhill', [d.id]);
+  assert.ok(res.ok);
+  assert.ok(d.missionId);
+  clearPending(s);
+  E.tick(s);
+  E.tick(s);
+  E.tick(s);
+  assert.ok(s.pendingReport || s.reportQueue.length > 0, '应生成历练报告');
+  if (s.pendingReport) {
+    assert.strictEqual(s.pendingReport.type, 'mission');
+    E.closeReport(s);
+  }
+  assert.strictEqual(d.missionId, null);
+});
+
+test('事件选项结算与资源变化', function () {
+  var s = newState();
+  s.pendingEvent = 'first_caravan';
+  var before = s.resources.renown;
+  var res = E.resolveEvent(s, 2);
+  assert.ok(res.ok);
+  assert.strictEqual(s.pendingEvent, null);
+  assert.ok(s.pendingResult);
+  assert.ok(s.resources.renown >= before);
+  E.closeResult(s);
+  assert.strictEqual(s.pendingResult, null);
+});
+
+test('战斗模拟生成战报与奖励', function () {
+  var s = newState();
+  var rep = E.simulateBattle(s, { danger: 1, name: '测试妖狼', power: 20 });
+  assert.ok(rep);
+  assert.ok(rep.lines.length > 0);
+  assert.ok(rep.type === 'battle');
+  assert.ok(rep.rewards);
+});
+
+test('宗门统计与风水评分', function () {
+  var s = newState();
+  var st = E.sectStats(s);
+  assert.ok(st.aura >= 1);
+  assert.ok(st.fengShui >= 0 && st.fengShui <= 100);
+  assert.ok(['大吉', '吉', '平', '凶', '大凶'].indexOf(st.fsGrade) >= 0);
+  assert.ok(st.housing >= 4);
+});
+
+test('功法与同门关系已建立', function () {
+  var s = newState();
+  var d = E.player(s);
+  assert.ok(E.techniqueOf(d).name);
+  assert.ok(Object.keys(d.relations).length >= 3);
+  var before = Object.assign({}, d.relations);
+  E.tick(s);
+  assert.ok(Object.keys(d.relations).length >= 3);
+  assert.ok(Object.keys(d.relations).some(function (id) { return d.relations[id] !== before[id]; }));
+});
+
+test('断粮会消耗饱食并损伤气血', function () {
+  var s = newState();
+  s.resources.food = 0;
+  s.buildings.forEach(function (b) { b.workers = []; });
+  s.disciples.forEach(function (d) { d.job = null; });
+  var d = E.player(s);
+  var hunger = d.hunger;
+  E.tick(s);
+  assert.ok(d.hunger < hunger);
+  assert.ok(s.resources.food === 0);
+});
+
+test('导出的存档可以重新导入', function () {
+  var s = newState();
+  var json = E.exportState(s);
+  var loaded = E.importState(json);
+  assert.ok(loaded);
+  assert.strictEqual(loaded.sectName, s.sectName);
+  assert.strictEqual(loaded.disciples.length, s.disciples.length);
+  assert.strictEqual(E.importState('not json'), null);
+});
+
+test('初始引导任务与警讯', function () {
+  var s = newState();
+  var tasks = E.guideTasks(s);
+  assert.ok(tasks.length >= 4);
+  assert.ok(tasks[0].done);
+  var alerts = E.alerts(s);
+  assert.ok(Array.isArray(alerts));
+});
+
+test('旧版存档版本不会被当成新版载入', function () {
+  var s = newState();
+  var json = JSON.stringify(Object.assign({}, s, { version: 1 }));
+  assert.strictEqual(E.importState(json), null);
+});
+
+console.log('\n' + passed + ' 项测试通过。\n');

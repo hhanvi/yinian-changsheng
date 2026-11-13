@@ -1,1559 +1,1672 @@
 /*
- * 一念长生 · 界面
+ * 一念长生 · 宗门篇 · 界面
+ * 原生 DOM + 内联 SVG；无构建步骤。
  */
-(function () {
+(function (global) {
   'use strict';
 
-  var D = window.XianData;
-  var E = window.XianEngine;
-  var app = document.getElementById('app');
-  var modalRoot = document.getElementById('modal-root');
-  var toastRoot = document.getElementById('toast-root');
+  var D = global.SectData;
+  var E = global.SectEngine;
+  var EV = global.SectEvents;
 
   var UI = {
-    state: null,
-    creation: null,
-    screen: 'cultivate',
-    charTab: 'stats',
-    invTab: 'items',
-    invFilter: 'all',
-    modal: null,
-    battlePillOpen: false,
-    settings: { theme: 'night', motion: true, usePill: true }
+    game: null,
+    tab: 'sect',
+    filter: 'all',
+    buildType: null,
+    buildCat: 'all',
+    affairsTab: 'mission',
+    marketQty: 1,
+    selectedBuilding: null,
+    missionPick: null,
+    recruitOpen: false,
+    modalOpen: false,
+    modalKey: '',
+    paused: false,
+    speed: 1,
+    acc: 0,
+    timer: null,
+    lastSaveDay: 0,
+    settings: { theme: 'paper', speed: 1, autoPause: true },
+    create: { origin: 'orphan', root: 'water', sectName: '青崖宗', playerName: '沈未央' },
+    mapZoom: 1,
+    tile: null,
+    uid: 0,
+    suppressClick: false
   };
-  window.XianUI = UI;
+
+  var TILE_W = 64, TILE_H = 32, ORIGIN_X = 326, ORIGIN_Y = 98;
+  var MAP_BASE = { x: 28, y: 38, w: 724, h: 414 };
 
   /* ------------------------------------------------------------------ */
-  /* 小工具                                                              */
+  /* 工具                                                               */
   /* ------------------------------------------------------------------ */
-
-  function esc(str) {
-    return String(str == null ? '' : str)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  function fmt(n) {
-    if (n == null || isNaN(n)) return '0';
-    n = Math.round(n);
-    if (Math.abs(n) >= 100000000) return (n / 100000000).toFixed(n >= 1e9 ? 0 : 1) + '亿';
-    if (Math.abs(n) >= 10000) return (n / 10000).toFixed(n >= 1e6 ? 0 : 1) + '万';
-    return n.toLocaleString('zh-CN');
-  }
-
-  function pct(v) {
-    if (!isFinite(v)) return 0;
-    return Math.max(0, Math.min(100, Math.round(v * 100)));
-  }
-
-  function statName(k) {
-    return ({
-      hp: '气血', mp: '灵力', atk: '攻击', def: '防御', sense: '神识',
-      comp: '悟性', luck: '气运', cult: '修炼', crit: '暴击', heal: '疗伤',
-      battleReward: '战利', alchemy: '丹道', life: '寿元'
-    })[k] || k;
-  }
-
-  function modsText(mods, opts) {
-    if (!mods) return '';
-    var parts = [];
-    Object.keys(mods).forEach(function (k) {
-      var v = mods[k];
-      if (!v) return;
-      if (['hpPct', 'mpPct', 'atkPct', 'defPct', 'sensePct', 'compPct', 'luckPct'].indexOf(k) !== -1) {
-        parts.push(statName(k.replace('Pct', '')) + ' +' + Math.round(v * 100) + '%');
-      } else if (['cult', 'crit', 'heal', 'battleReward', 'alchemy'].indexOf(k) !== -1) {
-        parts.push(statName(k) + ' +' + Math.round(v * 100) + '%');
-      } else if (['hp', 'mp', 'atk', 'def', 'sense', 'comp', 'luck'].indexOf(k) !== -1) {
-        parts.push(statName(k) + ' +' + v);
-      }
+  function h(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
     });
-    return parts.join(' · ');
   }
-
-  function rarityName(r) {
-    return ['凡品', '灵品', '宝品', '仙品', '神品'][r] || '凡品';
+  function fmt(n) {
+    n = Number(n) || 0;
+    if (Math.abs(n) >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
+    return Math.floor(n).toLocaleString('zh-CN');
   }
-
-  function barRow(label, value, max, cls) {
-    var p = max > 0 ? pct(value / max) : 0;
-    return '<div class="bar-row">' +
-      '<div class="bar-label"><span>' + esc(label) + '</span><span>' + fmt(value) + ' / ' + fmt(max) + '</span></div>' +
-      '<div class="bar ' + cls + '" role="progressbar" aria-label="' + esc(label) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + p + '"><i style="width:' + p + '%"></i></div>' +
-      '</div>';
+  function fmt1(n) { return (Math.round((Number(n) || 0) * 10) / 10).toFixed(1).replace(/\.0$/, ''); }
+  function pct(v) { return Math.max(0, Math.min(100, Math.round(v || 0))); }
+  function signed(n) { return (n > 0 ? '+' : '') + n; }
+  function hashStr(s) {
+    var hsh = 2166136261 >>> 0;
+    s = String(s);
+    for (var i = 0; i < s.length; i++) { hsh ^= s.charCodeAt(i); hsh = Math.imul(hsh, 16777619); }
+    return hsh >>> 0;
   }
-
-  function chip(text, tone) {
-    return '<span class="chip chip-' + (tone || 'plain') + '">' + text + '</span>';
-  }
-
-  function dangerDots(n) {
-    var out = '<span class="danger" aria-label="危险程度 ' + n + '">';
-    for (var i = 0; i < 4; i++) out += '<i class="' + (i < n ? 'on' : '') + '"></i>';
-    out += '</span>';
-    return out;
-  }
-
-  function icon(name) {
-    var paths = {
-      lotus: '<path d="M12 20c-4.2 0-7-2.4-7-5.5 1.8 0 3.2.6 4.2 1.7C8.4 13.4 8 11 8.8 8.8c1.3 1 2.3 2.6 2.7 4.5.3-2.6 1.2-4.8 2.7-6.6 1 1.7 1.4 3.8 1.1 6.1 1-1.3 2.3-2 4-2 0 3.1-2.8 5.5-7 5.5Z"/><path d="M5 20h14"/>',
-      compass: '<circle cx="12" cy="12" r="8"/><path d="m14.8 9.2-1.5 4.1-4.1 1.5 1.5-4.1 4.1-1.5Z"/>',
-      person: '<circle cx="12" cy="8" r="3.2"/><path d="M5.5 19.2c.7-3.5 3.2-5.3 6.5-5.3s5.8 1.8 6.5 5.3"/>',
-      bag: '<path d="M6.5 8.5h11l1 10.5h-13l1-10.5Z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>',
-      shop: '<path d="M4 10h16l-2-5H6l-2 5Z"/><path d="M5 10v9h14v-9"/><path d="M9 19v-5h6v5"/>',
-      settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/>',
-      close: '<path d="m6 6 12 12M18 6 6 18"/>',
-      arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
-      check: '<path d="m5 12.5 4.2 4L19 6.5"/>',
-      sword: '<path d="m14 4 6 6-8.5 8.5-6-6L14 4Z"/><path d="m6.5 13.5-2 6 6-2"/><path d="m12 8 4 4"/>',
-      coin: '<circle cx="12" cy="12" r="7.5"/><path d="M9 9h6v6H9z"/>',
-      calendar: '<rect x="4" y="5.5" width="16" height="14" rx="2"/><path d="M4 10h16M8 3.5v4M16 3.5v4"/>',
-      spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/>',
-      heart: '<path d="M12 20s-7-4.4-7-9.2C5 8 7 6 9.4 6c1.2 0 2.1.5 2.6 1.2C12.5 6.5 13.4 6 14.6 6 17 6 19 8 19 10.8 19 15.6 12 20 12 20Z"/>',
-      drop: '<path d="M12 3s6 6.2 6 10a6 6 0 0 1-12 0c0-3.8 6-10 6-10Z"/>'
+  function seeded(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-    var p = paths[name] || paths.spark;
-    return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
   }
-
-  function inkArt(variant) {
-    if (variant === 'landing') {
-      return '<svg class="ink-art" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
-        '<circle class="ink-sun" cx="700" cy="172" r="62"/>' +
-        '<path class="range range-3" d="M0 706 148 596 274 664 396 538 540 656 674 586 812 682 952 598 1082 668 1200 610V900H0Z"/>' +
-        '<path class="range range-2" d="M0 786 164 704 306 764 448 674 590 766 734 702 872 782 1022 712 1140 774 1200 742V900H0Z"/>' +
-        '<path class="range range-1" d="M0 852 184 802 364 844 524 792 706 852 866 812 1046 862 1200 822V900H0Z"/>' +
-        '<g class="mist"><ellipse cx="280" cy="760" rx="230" ry="24"/><ellipse cx="790" cy="812" rx="300" ry="26"/><ellipse cx="610" cy="690" rx="180" ry="13"/></g>' +
-        '<g class="birds"><path d="M470 250c8-7 14-7 22 0M508 232c8-7 14-7 22 0M446 286c6-5 10-5 16 0"/></g>' +
-        '</svg>';
-    }
-    return '<svg class="ink-art" viewBox="0 0 900 340" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
-      '<circle class="ink-sun" cx="620" cy="78" r="36"/>' +
-      '<path class="range range-3" d="M0 286 108 216 172 246 262 172 324 214 412 142 505 232 596 180 690 242 790 190 900 252V340H0Z"/>' +
-      '<path class="range range-2" d="M0 312 90 260 168 286 258 222 338 274 430 214 512 272 612 226 712 284 810 244 900 292V340H0Z"/>' +
-      '<path class="range range-1" d="M0 330 132 300 230 318 356 286 468 316 592 292 704 320 824 298 900 318V340H0Z"/>' +
-      '<g class="mist"><ellipse cx="170" cy="270" rx="150" ry="16"/><ellipse cx="640" cy="292" rx="190" ry="18"/><ellipse cx="450" cy="244" rx="120" ry="10"/></g>' +
-      '<g class="birds"><path d="M604 112c6-5 10-5 16 0M626 104c6-5 10-5 16 0M570 96c5-4 8-4 13 0"/></g>' +
-      '</svg>';
+  function iso(x, y) {
+    return { x: ORIGIN_X + (x - y) * TILE_W / 2, y: ORIGIN_Y + (x + y) * TILE_H / 2 };
   }
-
-  function screenHead(eyebrow, title, sub, glyph) {
-    return '<header class="screen-head">' +
-      '<div><p class="eyebrow">' + esc(eyebrow) + '</p><h1>' + esc(title) + '</h1>' +
-      (sub ? '<p class="screen-sub">' + esc(sub) + '</p>' : '') + '</div>' +
-      (glyph ? '<div class="head-glyph" aria-hidden="true">' + esc(glyph) + '</div>' : '') +
-      '</header>';
+  function rootOf(d) { return D.ROOTS[d.root] || D.ROOTS.water; }
+  function roleBadge(d) {
+    return d.role === 'inner'
+      ? '<span class="badge badge-inner">内门</span>'
+      : '<span class="badge badge-outer">外门</span>';
   }
-
-  function nextStageName(state) {
-    var p = state.player;
-    var info = E.stageInfo(state);
-    if (info.isMax) return '大道尽头';
-    if (info.isFinalLayer) return '飞升 · 需渡九霄雷劫';
-    var realm = D.REALMS[p.realm];
-    var labels = D.LAYER_LABELS[realm.layers];
-    if (p.layer < realm.layers - 1) return realm.name + labels[p.layer + 1];
-    var next = D.REALMS[p.realm + 1];
-    if (!next) return '大道尽头';
-    var nextLabels = D.LAYER_LABELS[next.layers];
-    return next.name + nextLabels[0];
+  function stage(d) { return E.stageName(d); }
+  function date(state) { return E.getDate(state); }
+  function stats() { return E.sectStats(UI.game); }
+  function player() { return E.player(UI.game); }
+  function dot(color) { return '<span class="dot" style="background:' + color + '"></span>'; }
+  function seal(glyph, cls) { return '<span class="seal ' + (cls || '') + '">' + h(glyph) + '</span>'; }
+  function bar(value, cls) {
+    return '<div class="bar ' + (cls || '') + '"><i style="width:' + pct(value) + '%"></i></div>';
   }
-
-  function currentQuote(state) {
-    return D.QUOTES[state.stats.meditations % D.QUOTES.length];
+  function needBar(label, value, cls) {
+    return '<div class="need-row"><span>' + h(label) + '</span>' + bar(value, cls) + '<b>' + pct(value) + '</b></div>';
   }
-
-  /* ------------------------------------------------------------------ */
-  /* 设置与主题                                                          */
-  /* ------------------------------------------------------------------ */
-
-  function applySettings() {
-    var theme = UI.settings.theme === 'paper' ? 'paper' : 'night';
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.classList.toggle('reduce-motion', !UI.settings.motion);
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'paper' ? '#efe7d5' : '#0b1210');
+  function dateShort(state) {
+    var d = date(state);
+    return d.year + '年' + d.month + '月';
   }
+  function weather() {
+    return D.WEATHER.find(function (w) { return w.id === UI.game.weather; }) || D.WEATHER[0];
+  }
+  function todoText(n) { return n > 0 ? '<span class="todo-count">' + n + '</span>' : ''; }
 
-  function loadSettings() {
-    try {
-      var raw = localStorage.getItem('yinian_ui_v1');
-      if (raw) {
-        var s = JSON.parse(raw);
-        if (s.theme) UI.settings.theme = s.theme;
-        if (typeof s.motion === 'boolean') UI.settings.motion = s.motion;
-        if (typeof s.usePill === 'boolean') UI.settings.usePill = s.usePill;
-      }
-    } catch (e) { /* ignore */ }
-    applySettings();
+  function toast(msg, type) {
+    var root = document.getElementById('toast-root');
+    if (!root) return;
+    var el = document.createElement('div');
+    el.className = 'toast ' + (type || '');
+    el.innerHTML = '<span class="toast-mark">' + (type === 'good' ? '善' : type === 'warn' ? '警' : '告') + '</span><span>' + h(msg) + '</span>';
+    root.appendChild(el);
+    setTimeout(function () { el.classList.add('out'); }, 2600);
+    setTimeout(function () { el.remove(); }, 3200);
   }
 
   function saveSettings() {
-    try { localStorage.setItem('yinian_ui_v1', JSON.stringify(UI.settings)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(D.SETTINGS_KEY, JSON.stringify(UI.settings)); } catch (e) {}
+  }
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem(D.SETTINGS_KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        if (s && s.theme) UI.settings = Object.assign(UI.settings, s);
+      }
+    } catch (e) {}
+    UI.speed = UI.settings.speed || 1;
+    applyTheme(UI.settings.theme);
+  }
+  function applyTheme(theme) {
+    UI.settings.theme = theme === 'night' ? 'night' : 'paper';
+    document.documentElement.setAttribute('data-theme', UI.settings.theme);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', UI.settings.theme === 'night' ? '#121817' : '#e8dec9');
+  }
+
+  function saveNow() {
+    if (!UI.game) return;
+    E.save(UI.game);
+    UI.lastSaveDay = UI.game.day;
   }
 
   /* ------------------------------------------------------------------ */
-  /* 提示                                                                */
+  /* 头像                                                               */
   /* ------------------------------------------------------------------ */
+  function avatarSvg(d, size) {
+    var seed = d.avatarSeed || hashStr(d.name);
+    var r = seeded(seed);
+    var root = rootOf(d);
+    var bg1 = root.color;
+    var bg2 = '#f2e6d0';
+    var skin = ['#e8c9a8', '#dfbb93', '#f0d3b2', '#d8b28c'][seed % 4];
+    var hair = ['#2c2823', '#3b3028', '#242322', '#4b3b2d'][Math.floor(r() * 4)];
+    var robe = root.color;
+    var hairType = Math.floor(r() * 4);
+    var female = d.gender === 'f';
+    var uid = 'av' + (++UI.uid);
+    var sz = size || 100;
+    var hairPath = [
+      'M-18,-14 Q-22,4 -13,12 L-9,2 Q-14,-8 -6,-20 Q4,-29 16,-17 Q23,-7 16,4 L20,13 Q26,-5 17,-22 Q4,-35 -12,-25 Q-20,-20 -18,-14 Z',
+      'M-19,-12 Q-25,2 -14,12 L-8,4 Q-15,-6 -8,-18 Q3,-30 17,-18 Q22,-8 17,2 L22,12 Q27,-4 18,-21 Q2,-36 -13,-24 Z',
+      'M-20,-18 Q-9,-32 10,-27 Q25,-20 20,-2 L16,10 L10,1 Q16,-10 7,-18 Q-2,-24 -10,-15 L-16,8 L-22,-2 Z',
+      'M-18,-15 Q-20,3 -10,13 L-5,1 Q-12,-8 -4,-19 Q7,-30 17,-16 Q22,-4 14,6 L19,14 Q27,-5 17,-22 Q1,-36 -13,-26 Z'
+    ][hairType];
+    return '<svg class="avatar-svg" viewBox="0 0 100 100" width="' + sz + '" height="' + sz + '" aria-hidden="true">' +
+      '<defs><radialGradient id="' + uid + 'g" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="' + bg2 + '"/><stop offset="1" stop-color="' + bg1 + '"/></radialGradient>' +
+      '<clipPath id="' + uid + 'c"><circle cx="50" cy="50" r="47"/></clipPath></defs>' +
+      '<circle cx="50" cy="50" r="48" fill="url(#' + uid + 'g)"/>' +
+      '<g clip-path="url(#' + uid + 'c)">' +
+      '<path d="M8 96 Q16 67 50 63 Q84 67 92 96 Z" fill="' + robe + '" opacity=".92"/>' +
+      '<path d="M25 95 Q30 72 50 68 Q70 72 75 95" fill="#f4e9d4" opacity=".38"/>' +
+      '<path d="' + hairPath + '" transform="translate(50,48) scale(.98)" fill="' + hair + '" opacity=".94"/>' +
+      '<ellipse cx="50" cy="55" rx="15" ry="20" fill="' + skin + '"/>' +
+      '<path d="M35 44 Q34 33 50 31 Q66 33 65 45 Q58 39 50 41 Q42 39 35 44 Z" fill="' + hair + '"/>' +
+      '<path d="M38 55 Q42 53 46 55" stroke="#3b2f28" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+      '<path d="M54 55 Q58 53 62 55" stroke="#3b2f28" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+      '<path d="M45 65 Q50 68 55 65" stroke="#a35b4a" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+      (female ? '<circle cx="33" cy="47" r="2.4" fill="#b86a57"/><circle cx="67" cy="47" r="2.4" fill="#b86a57"/>' : '') +
+      '<path d="M30 38 L50 34 L70 38" stroke="#d8b96b" stroke-width="1.2" fill="none" opacity=".8"/>' +
+      (d.role === 'inner' ? '<path d="M62 35 L67 25 L72 35" fill="none" stroke="#e0c47b" stroke-width="1.4"/>' : '') +
+      (d.role === 'inner' ? '<circle cx="60" cy="61" r="1.2" fill="#d8b96b"/>' : '') +
+      '</g><circle cx="50" cy="50" r="47" fill="none" stroke="rgba(60,40,25,.18)" stroke-width="1.5"/></svg>';
+  }
 
-  UI._toastTimers = [];
-  UI._notifiedAchievements = {};
-
-  UI.clearToasts = function () {
-    UI._toastTimers.forEach(function (t) { clearTimeout(t); });
-    UI._toastTimers = [];
-    UI._notifiedAchievements = {};
-    if (toastRoot) toastRoot.innerHTML = '';
+  /* ------------------------------------------------------------------ */
+  /* 地图：地形与建筑                                                   */
+  /* ------------------------------------------------------------------ */
+  var PALETTE = {
+    gate: { roof: '#6d4a3c', roof2: '#865846', wall: '#e4d4b7', wall2: '#cbb897', trim: '#a33b2a', sign: '门' },
+    dorm: { roof: '#4f6570', roof2: '#647b84', wall: '#e7d9bf', wall2: '#d1bf9e', trim: '#8f6a43', sign: '舍' },
+    meditation: { roof: '#3f5d56', roof2: '#55756b', wall: '#ebe0ca', wall2: '#d5c5a8', trim: '#b08a4a', sign: '静' },
+    kitchen: { roof: '#795841', roof2: '#916b4e', wall: '#eadcc2', wall2: '#d5c09f', trim: '#a35b4a', sign: '膳' },
+    alchemy: { roof: '#654b3b', roof2: '#7d5d48', wall: '#e4d2b5', wall2: '#c9b18e', trim: '#b25d48', sign: '丹' },
+    library: { roof: '#4a5f5a', roof2: '#5e7770', wall: '#e9ddc6', wall2: '#d1c1a2', trim: '#b08a4a', sign: '经' },
+    shrine: { roof: '#70453c', roof2: '#8a5849', wall: '#e6d4b5', wall2: '#c9b18d', trim: '#a33b2a', sign: '祠' },
+    guest: { roof: '#596a62', roof2: '#6f8177', wall: '#e8dbc2', wall2: '#d1bf9e', trim: '#a9854e', sign: '客' },
+    infirmary: { roof: '#5d6650', roof2: '#727a61', wall: '#e9ddc5', wall2: '#d3c1a1', trim: '#7b8f55', sign: '庐' },
+    storage: { roof: '#655c4e', roof2: '#7c705f', wall: '#dfd0b5', wall2: '#c6b394', trim: '#8b6a45', sign: '库' }
   };
 
-  UI.toast = function (text, tone) {
-    if (!toastRoot) return;
-    var el = document.createElement('div');
-    el.className = 'toast' + (tone ? ' toast-' + tone : '');
-    el.innerHTML = '<span class="toast-dot"></span><span>' + text + '</span>';
-    toastRoot.appendChild(el);
-    var removeTimer = setTimeout(function () {
-      el.classList.add('out');
-      var t = setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
-      UI._toastTimers.push(t);
-    }, tone === 'achievement' ? 4200 : 2800);
-    UI._toastTimers.push(removeTimer);
-    while (toastRoot.children.length > 2) toastRoot.removeChild(toastRoot.firstChild);
-  };
+  function tilePoly(sx, sy, inset) {
+    inset = inset || 0;
+    var w = 32 - inset, hh = 16 - inset / 2;
+    return (sx) + ',' + (sy - hh) + ' ' + (sx + w) + ',' + sy + ' ' + sx + ',' + (sy + hh) + ' ' + (sx - w) + ',' + sy;
+  }
 
-  UI.notifyAchievements = function (before) {
-    var s = UI.state;
-    if (!s) return;
-    var list = D.ACHIEVEMENTS.filter(function (a) {
-      return s.achievements[a.id] && !before[a.id] && !UI._notifiedAchievements[a.id];
-    });
-    if (!list.length) return;
-    list.forEach(function (a) { UI._notifiedAchievements[a.id] = true; });
-    if (list.length > 2) {
-      UI.toast('达成 ' + list.length + ' 项成就 · ' + list.slice(0, 2).map(function (a) { return esc(a.name); }).join('、') + ' 等', 'achievement');
-      return;
+  function treeSvg(sx, sy, seed, scale) {
+    var r = seeded(seed);
+    var s = scale || 1;
+    var hue = 92 + Math.floor(r() * 30);
+    var fill = 'hsl(' + hue + ',26%,' + (34 + Math.floor(r() * 10)) + '%)';
+    var fill2 = 'hsl(' + (hue - 8) + ',24%,' + (27 + Math.floor(r() * 8)) + '%)';
+    var hgt = 15 + Math.floor(r() * 8);
+    return '<g class="tree" transform="translate(' + sx + ',' + sy + ') scale(' + s + ')">' +
+      '<ellipse cx="0" cy="3" rx="9" ry="3" fill="rgba(30,40,25,.16)"/>' +
+      '<path d="M0 2 L-1 -' + hgt + '" stroke="#5e4b37" stroke-width="2" stroke-linecap="round"/>' +
+      '<path d="M-1 -' + (hgt * .55) + ' L-7 -' + (hgt * .85) + '" stroke="#5e4b37" stroke-width="1.4"/>' +
+      '<circle cx="-5" cy="-' + (hgt * .9) + '" r="7" fill="' + fill2 + '"/>' +
+      '<circle cx="5" cy="-' + (hgt * .82) + '" r="6" fill="' + fill + '"/>' +
+      '<circle cx="0" cy="-' + (hgt * 1.12) + '" r="6.5" fill="' + fill + '"/>' +
+      '</g>';
+  }
+
+  function rockSvg(sx, sy, seed, scale) {
+    var r = seeded(seed);
+    var s = scale || 1;
+    var w = 10 + Math.floor(r() * 10);
+    return '<g class="rock" transform="translate(' + sx + ',' + sy + ') scale(' + s + ')">' +
+      '<ellipse cx="0" cy="4" rx="' + (w + 3) + '" ry="4" fill="rgba(30,30,25,.12)"/>' +
+      '<path d="M-' + w + ' 2 L-' + (w - 3) + ' -8 L-' + (w * .2) + ' -14 L' + (w * .65) + ' -5 L' + w + ' 2 Z" fill="#8f8a7c"/>' +
+      '<path d="M-' + (w - 3) + ' -8 L-' + (w * .2) + ' -14 L0 -4 L-' + (w * .4) + ' 2 Z" fill="#a6a092" opacity=".75"/>' +
+      '<path d="M0 -4 L' + (w * .65) + ' -5 L' + w + ' 2 L' + (w * .2) + ' 3 Z" fill="#78746a" opacity=".7"/>' +
+      '</g>';
+  }
+
+  function decorSvg(item) {
+    var p = iso(item.x, item.y);
+    if (E.buildingAt(UI.game, item.x, item.y)) return '';
+    if (item.type === 'lantern') {
+      return '<g class="decor lantern" transform="translate(' + p.x + ',' + p.y + ')"><ellipse cx="0" cy="4" rx="7" ry="3" fill="rgba(40,30,20,.12)"/><path d="M0 3 L0 -13" stroke="#6d573d" stroke-width="1.4"/><circle cx="0" cy="-12" r="8" fill="rgba(222,160,70,.16)"/><path d="M-3 -15 L3 -15 L4 -8 L-4 -8 Z" fill="#b34a35"/><circle cx="0" cy="-7" r="1.3" fill="#e8c46b"/></g>';
     }
-    list.forEach(function (a, i) {
-      var t = setTimeout(function () {
-        UI.toast('成就 · ' + esc(a.name), 'achievement');
-      }, i * 450);
-      UI._toastTimers.push(t);
+    if (item.type === 'bamboo') {
+      return '<g class="decor bamboo" transform="translate(' + p.x + ',' + p.y + ')"><ellipse cx="0" cy="4" rx="9" ry="3" fill="rgba(40,30,20,.1)"/><path d="M-5 3 L-7 -22 M2 3 L1 -27 M7 3 L9 -17" stroke="#55714f" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M-7 -12 q-7 -4 -9 2 q7 2 9 -2 M1 -18 q8 -5 10 1 q-7 2 -10 -1 M9 -8 q7 -3 9 3 q-7 1 -9 -3" fill="#6f8f5e"/></g>';
+    }
+    if (item.type === 'table') {
+      return '<g class="decor table" transform="translate(' + p.x + ',' + p.y + ')"><ellipse cx="0" cy="5" rx="12" ry="4" fill="rgba(40,30,20,.12)"/><ellipse cx="0" cy="-1" rx="9" ry="4.5" fill="#b8a887"/><path d="M-6 0 L-6 6 M6 0 L6 6" stroke="#8f7b5e" stroke-width="1.4"/><circle cx="-11" cy="2" r="3" fill="#a89676"/><circle cx="11" cy="2" r="3" fill="#a89676"/></g>';
+    }
+    if (item.type === 'flag') {
+      return '<g class="decor flag" transform="translate(' + p.x + ',' + p.y + ')"><ellipse cx="0" cy="4" rx="6" ry="2.5" fill="rgba(40,30,20,.1)"/><path d="M0 3 L0 -28" stroke="#6d573d" stroke-width="1.6"/><path d="M0 -27 q14 4 18 0 l-4 12 q-10 3 -14 0 Z" fill="#a33b2a"/><path d="M7 -24 l2 6" stroke="#e8d6b0" stroke-width="1"/></g>';
+    }
+    return treeSvg(p.x, p.y, hashStr('decor' + item.x + ':' + item.y), 0.8);
+  }
+
+  function waterRipple(sx, sy, seed) {
+    var r = seeded(seed);
+    var lines = '';
+    for (var i = 0; i < 3; i++) {
+      var dx = -10 + r() * 20, dy = -5 + r() * 10;
+      lines += '<path class="ripple" style="animation-delay:' + (r() * 3).toFixed(2) + 's" d="M' + (sx + dx - 8) + ' ' + (sy + dy) + ' q8 -3 16 0" stroke="#e7f2ec" stroke-width="1" fill="none" opacity=".55"/>';
+    }
+    return lines;
+  }
+
+  function houseSvg(pal, opts) {
+    opts = opts || {};
+    var half = opts.half || 21;
+    var peak = opts.peak || 37;
+    var wallTop = opts.wallTop || -22;
+    var sign = pal.sign || '舍';
+    var lantern = opts.lantern ? '<g class="lantern"><circle cx="' + (half + 2) + '" cy="-10" r="9" fill="rgba(220,150,60,.18)"/><circle cx="' + (half + 2) + '" cy="-10" r="3" fill="#d89a4c"/></g>' : '';
+    var smoke = opts.smoke ? '<g class="smoke"><circle cx="' + (-half + 6) + '" cy="' + (wallTop - 4) + '" r="4" fill="#ded4c3" opacity=".46"/><circle cx="' + (-half + 2) + '" cy="' + (wallTop - 14) + '" r="6" fill="#ded4c3" opacity=".3"/><circle cx="' + (-half + 9) + '" cy="' + (wallTop - 24) + '" r="8" fill="#ded4c3" opacity=".18"/></g>' : '';
+    return '' +
+      '<ellipse class="b-shadow" cx="0" cy="9" rx="' + (half + 7) + '" ry="9" fill="rgba(35,30,20,.18)"/>' +
+      '<polygon class="b-base" points="0,-12 ' + half + ',0 0,12 -' + half + ',0" fill="#c9b58e"/>' +
+      '<polygon class="b-wall-left" points="-' + half + ',0 0,12 0,-10 -' + half + ',' + wallTop + '" fill="' + pal.wall + '"/>' +
+      '<polygon class="b-wall-right" points="' + half + ',0 0,12 0,-10 ' + half + ',' + wallTop + '" fill="' + pal.wall2 + '"/>' +
+      '<path class="b-door" d="M6,-1 L14,3 L14,-11 L6,-15 Z" fill="' + pal.trim + '" opacity=".9"/>' +
+      '<path class="b-window" d="M-14,-2 L-6,2 L-6,-10 L-14,-14 Z" fill="#f0d79b" opacity=".72"/>' +
+      '<polygon class="b-roof-left" points="-' + (half + 6) + ',' + (wallTop + 2) + ' 0,-' + peak + ' 0,-6" fill="' + pal.roof + '"/>' +
+      '<polygon class="b-roof-right" points="' + (half + 6) + ',' + (wallTop + 2) + ' 0,-' + peak + ' 0,-6" fill="' + pal.roof2 + '"/>' +
+      '<path class="b-ridge" d="M-' + (half + 4) + ',' + (wallTop + 4) + ' Q0,-' + (peak + 2) + ' ' + (half + 4) + ',' + (wallTop + 4) + '" fill="none" stroke="' + pal.trim + '" stroke-width="1.4" opacity=".8"/>' +
+      '<path class="b-eave" d="M-' + (half + 7) + ',' + (wallTop + 3) + ' L0,-4 L' + (half + 7) + ',' + (wallTop + 3) + '" fill="none" stroke="#3d352b" stroke-width="1.2" opacity=".55"/>' +
+      '<g class="b-sign"><rect x="-7" y="' + (wallTop + 2) + '" width="14" height="7" rx="1" fill="#a33b2a"/><text x="0" y="' + (wallTop + 7.5) + '" text-anchor="middle" font-size="5.5" fill="#f3e7cf">' + sign + '</text></g>' +
+      lantern + smoke;
+  }
+
+  function buildingGroup(b, opts) {
+    opts = opts || {};
+    var def = D.BUILDINGS[b.type] || {};
+    var p = opts.noIso ? { x: 0, y: 0 } : iso(b.x, b.y);
+    var pal = PALETTE[b.type] || PALETTE.dorm;
+    var inner = '';
+    if (b.construction > 0) {
+      inner = '<g class="construction">' +
+        '<ellipse cx="0" cy="8" rx="28" ry="10" fill="rgba(35,30,20,.16)"/>' +
+        '<polygon points="0,-12 26,0 0,12 -26,0" fill="#c7b691" opacity=".55"/>' +
+        '<path d="M-18,0 L-18,-18 M0,10 L0,-26 M18,0 L18,-18 M-18,-18 L18,-18" stroke="#8b6a45" stroke-width="2" fill="none"/>' +
+        '<path d="M-18,-12 L18,-12 M-9,-24 L-9,8 M9,-24 L9,8" stroke="#8b6a45" stroke-width="1.2" fill="none" opacity=".7"/>' +
+        '<text x="0" y="-34" text-anchor="middle" class="b-progress">' + (E.def(b) ? E.def(b).name : '营造') + ' · ' + Math.ceil(b.construction) + '日</text>' +
+        '</g>';
+    } else if (b.type === 'farm') {
+      inner = '<ellipse cx="0" cy="8" rx="29" ry="11" fill="rgba(35,30,20,.14)"/>' +
+        '<polygon points="0,-14 29,-1 0,13 -29,-1" fill="#8fa06d"/>' +
+        '<path d="M-20,-2 Q0,3 20,-2 M-18,3 Q0,8 18,3 M-13,8 Q0,12 13,8" stroke="#637b4e" stroke-width="2" fill="none" opacity=".7"/>' +
+        '<path d="M-18,-2 q2 -5 4 0 M-9,1 q2 -5 4 0 M1,2 q2 -4 4 0 M11,1 q2 -4 4 0 M-12,6 q2 -4 4 0 M-2,7 q2 -4 4 0 M8,6 q2 -4 4 0" stroke="#d4c36a" stroke-width="1.2" fill="none"/>' +
+        '<g transform="translate(17,-7) scale(.55)">' + houseSvg({ roof: '#6d5a40', roof2: '#826b4c', wall: '#d9c7a4', wall2: '#c3ad89', trim: '#8f6a43', sign: '田' }, { half: 13, peak: 22, wallTop: -13 }) + '</g>';
+    } else if (b.type === 'herb') {
+      inner = '<ellipse cx="0" cy="8" rx="28" ry="10" fill="rgba(35,30,20,.14)"/>' +
+        '<polygon points="0,-14 29,-1 0,13 -29,-1" fill="#849568"/>' +
+        '<path d="M-20,-3 L20,-3 M-18,2 L18,2 M-15,7 L15,7" stroke="#b6ab77" stroke-width="1" opacity=".7"/>' +
+        '<path d="M-18,-3 q3 -8 6 0 M-8,0 q3 -8 6 0 M3,-1 q3 -8 6 0 M13,0 q3 -8 6 0 M-12,5 q3 -7 6 0 M0,7 q3 -7 6 0 M12,5 q3 -7 6 0" stroke="#7d9a5f" stroke-width="1.6" fill="none"/>' +
+        '<circle cx="-13" cy="-6" r="2" fill="#d6df92" opacity=".8"/><circle cx="7" cy="-4" r="2" fill="#d6df92" opacity=".8"/>' +
+        '<path d="M-22,-10 L22,-10 M-22,-10 L-26,-18 M22,-10 L26,-18" stroke="#8f6a43" stroke-width="1.4" fill="none"/>';
+    } else if (b.type === 'array') {
+      inner = '<ellipse cx="0" cy="1" rx="28" ry="15" fill="rgba(73,128,119,.18)"/>' +
+        '<ellipse cx="0" cy="1" rx="22" ry="11" fill="none" stroke="#6fa99b" stroke-width="1.4" stroke-dasharray="4 3" class="array-ring"/>' +
+        '<ellipse cx="0" cy="1" rx="13" ry="6.5" fill="none" stroke="#b8d5c7" stroke-width="1" opacity=".8"/>' +
+        '<path d="M0,-10 L4,-2 L12,0 L4,3 L0,10 L-4,3 L-12,0 L-4,-2 Z" fill="#8bc0ae" opacity=".8" class="array-core"/>' +
+        '<circle cx="-19" cy="0" r="2" fill="#e7d7a2"/><circle cx="19" cy="0" r="2" fill="#e7d7a2"/><circle cx="0" cy="-9" r="2" fill="#e7d7a2"/><circle cx="0" cy="10" r="2" fill="#e7d7a2"/>';
+    } else if (b.type === 'well') {
+      inner = '<ellipse cx="0" cy="8" rx="24" ry="10" fill="rgba(35,30,20,.14)"/>' +
+        '<ellipse cx="0" cy="1" rx="16" ry="8" fill="#8f8a7c"/>' +
+        '<ellipse cx="0" cy="-1" rx="12" ry="6" fill="#4f7d7c"/>' +
+        '<path d="M-14,-1 L-14,-18 M14,-1 L14,-18 M-18,-18 L18,-18" stroke="#7a654a" stroke-width="2" fill="none"/>' +
+        '<path d="M-17,-18 Q0,-27 17,-18" fill="none" stroke="#6d5a40" stroke-width="3"/>' +
+        '<path d="M0,-19 L0,-10" stroke="#b8a37e" stroke-width="1.2"/><circle cx="0" cy="-8" r="2.2" fill="#c8b58d"/>' +
+        '<path d="M-9,4 q9 3 18 0" stroke="#d5e4de" stroke-width="1" fill="none" opacity=".6"/>';
+    } else if (b.type === 'pavilion') {
+      inner = '<ellipse cx="0" cy="8" rx="26" ry="10" fill="rgba(35,30,20,.14)"/>' +
+        '<polygon points="0,-12 24,0 0,12 -24,0" fill="#c9b58e"/>' +
+        '<path d="M-17,0 L-17,-19 M17,0 L17,-19 M-8,9 L-8,-22 M8,9 L8,-22" stroke="#7b6144" stroke-width="2" fill="none"/>' +
+        '<polygon points="-27,-20 0,-38 27,-20 0,-7" fill="#4f6a5e"/>' +
+        '<polygon points="-27,-20 0,-38 0,-7" fill="#3f5a50"/>' +
+        '<path d="M-22,-22 Q0,-31 22,-22" stroke="#b08a4a" stroke-width="1" fill="none"/>' +
+        '<path d="M-12,4 L12,4" stroke="#8f6a43" stroke-width="2"/>';
+    } else if (b.type === 'arena') {
+      inner = '<ellipse cx="0" cy="8" rx="27" ry="11" fill="rgba(35,30,20,.14)"/>' +
+        '<ellipse cx="0" cy="1" rx="25" ry="12" fill="none" stroke="#9b8763" stroke-width="2" stroke-dasharray="4 3"/>' +
+        '<path d="M-17,3 L-17,-14 M-19,-14 L-15,-19 M17,3 L17,-14 M15,-14 L19,-19" stroke="#7a654a" stroke-width="2"/>' +
+        '<path d="M-10,5 L-15,-8 M-15,-8 L-12,-4 M-15,-8 L-18,-5" stroke="#8d877b" stroke-width="1.4"/>' +
+        '<path d="M8,5 L12,-6 M12,-6 L15,-4" stroke="#8d877b" stroke-width="1.4"/>' +
+        '<circle cx="0" cy="-2" r="2" fill="#b08a4a"/>';
+    } else if (b.type === 'gate') {
+      inner = '<ellipse cx="0" cy="9" rx="31" ry="10" fill="rgba(35,30,20,.16)"/>' +
+        '<polygon points="0,-12 28,0 0,12 -28,0" fill="#c9b58e"/>' +
+        '<path d="M-17,2 L-17,-26 L-12,-26 L-12,2 M17,2 L17,-26 L12,-26 L12,2" fill="#8f4a3b"/>' +
+        '<path d="M-23,-24 L0,-40 L23,-24 L0,-17 Z" fill="#6d4a3c"/>' +
+        '<path d="M-23,-24 L0,-40 L0,-17 Z" fill="#593b30"/>' +
+        '<path d="M-24,-24 Q0,-33 24,-24" stroke="#b08a4a" stroke-width="1.2" fill="none"/>' +
+        '<rect x="-8" y="-22" width="16" height="8" rx="1" fill="#a33b2a"/><text x="0" y="-16.3" text-anchor="middle" font-size="5.6" fill="#f3e7cf">山门</text>' +
+        '<path d="M-14,-22 L-14,-9 M14,-22 L14,-9" stroke="#d8b96b" stroke-width="1" opacity=".5"/>';
+    } else if (b.type === 'shrine') {
+      inner = houseSvg(pal, { half: 22, peak: 40, wallTop: -24, lantern: true }) +
+        '<path d="M-22,-3 L-22,-18 M22,-3 L22,-18" stroke="#8a3b2c" stroke-width="1.6"/>' +
+        '<path d="M-14,-24 L0,-32 L14,-24" fill="none" stroke="#b08a4a" stroke-width="1.2"/>';
+    } else if (b.type === 'library') {
+      inner = houseSvg(pal, { half: 23, peak: 44, wallTop: -27, lantern: true }) +
+        '<path d="M-18,-2 L-18,-15 M18,-2 L18,-15" stroke="#b08a4a" stroke-width="1" opacity=".6"/>' +
+        '<path d="M-8,-16 L8,-16 M-8,-13 L8,-13" stroke="#d8b96b" stroke-width="1" opacity=".85"/>';
+    } else if (b.type === 'alchemy') {
+      inner = houseSvg(pal, { half: 21, peak: 37, wallTop: -22, smoke: true }) +
+        '<circle cx="0" cy="-3" r="8" fill="#b25d48" opacity=".2" class="furnace-glow"/><path d="M-4,2 L4,2 L3,-4 L-3,-4 Z" fill="#6e4f3d"/><path d="M-2,-4 q2 -5 4 0" stroke="#d89a4c" stroke-width="1.4" fill="none"/>';
+    } else if (b.type === 'kitchen') {
+      inner = houseSvg(pal, { half: 22, peak: 38, wallTop: -23, smoke: true, lantern: true });
+    } else if (b.type === 'infirmary') {
+      inner = houseSvg(pal, { half: 21, peak: 36, wallTop: -21, lantern: true }) +
+        '<path d="M-12,-11 L-8,-17 M-8,-17 L-4,-12" stroke="#7b8f55" stroke-width="1.2" fill="none"/><circle cx="-8" cy="-18" r="2" fill="#a8b86a"/>';
+    } else if (b.type === 'guest') {
+      inner = houseSvg(pal, { half: 21, peak: 36, wallTop: -21, lantern: true }) +
+        '<path d="M18,-6 L25,-12 L25,-2 Z" fill="#a33b2a" opacity=".85"/>';
+    } else if (b.type === 'storage') {
+      inner = houseSvg(pal, { half: 23, peak: 34, wallTop: -20 }) +
+        '<rect x="-15" y="-1" width="6" height="5" fill="#8f6a43"/><rect x="8" y="1" width="6" height="5" fill="#8f6a43"/>';
+    } else {
+      inner = houseSvg(pal, { half: 22, peak: 38, wallTop: -23, lantern: b.type === 'dorm' });
+    }
+    var level = b.level > 1 ? '<text class="b-level" x="0" y="-44" text-anchor="middle">' + '·'.repeat(b.level - 1) + '</text>' : '';
+    var selected = UI.selectedBuilding === b.id ? ' selected' : '';
+    return '<g class="building type-' + b.type + selected + '" transform="translate(' + p.x + ',' + p.y + ')" data-building="' + b.id + '">' +
+      '<title>' + h(def.name || '建筑') + ' · ' + (b.construction > 0 ? '营造中' : 'Lv.' + (b.level || 1)) + '</title>' +
+      inner + level + '</g>';
+  }
+
+  function unitPosition(d) {
+    if (!UI.game) return iso(6, 6);
+    if (d.job) {
+      var b = E.buildingById(UI.game, d.job);
+      if (b) {
+        var base = iso(b.x, b.y);
+        var idx = Math.max(0, b.workers.indexOf(d.id));
+        return { x: base.x + (idx - (b.workers.length - 1) / 2) * 13, y: base.y + 14 + (idx % 2) * 3 };
+      }
+    }
+    if (d.state === 'sleep') {
+      var dorm = UI.game.buildings.find(function (b) { return b.type === 'dorm' && !b.construction; });
+      if (dorm) { var dp = iso(dorm.x, dorm.y); return { x: dp.x + 2, y: dp.y + 16 }; }
+    }
+    if (d.state === 'rest') {
+      var inf = UI.game.buildings.find(function (b) { return b.type === 'infirmary' && !b.construction; });
+      if (inf) { var ip = iso(inf.x, inf.y); return { x: ip.x, y: ip.y + 16 }; }
+    }
+    var center = iso(6, 6);
+    var seed = seeded(d.avatarSeed || 7);
+    return { x: center.x + (seed() * 90 - 45), y: center.y + (seed() * 26 - 13) };
+  }
+
+  function tokenSvg(d) {
+    if (!d || d.missionId) return '';
+    var pos = unitPosition(d);
+    var root = rootOf(d);
+    var stateGlyph = { meditate: '静', work: '作', sleep: '眠', rest: '伤', train: '武', idle: '闲', mission: '外' }[d.state] || '闲';
+    var stateColor = d.state === 'rest' ? '#a35b4a' : d.state === 'work' ? '#8f6a43' : d.state === 'meditate' ? '#4e7c78' : d.state === 'sleep' ? '#5e6577' : '#7d7565';
+    var isPlayer = d.id === UI.game.playerId;
+    var selected = UI.selectedDisciple === d.id ? ' selected' : '';
+    return '<g class="disciple-token' + (isPlayer ? ' is-player' : '') + selected + '" transform="translate(' + pos.x + ',' + pos.y + ')" data-disciple="' + d.id + '">' +
+      '<title>' + h(d.name + ' · ' + stage(d) + ' · ' + d.stateLabel) + '</title>' +
+      '<ellipse class="t-shadow" cx="0" cy="2" rx="7" ry="3" fill="rgba(30,25,18,.22)"/>' +
+      '<path class="t-robe" d="M-5,1 L-4,-11 L4,-11 L5,1 Z" fill="' + root.color + '"/>' +
+      '<path d="M-4,-10 L0,-6 L4,-10" fill="#f2e6d1" opacity=".65"/>' +
+      '<circle class="t-head" cx="0" cy="-15" r="4.2" fill="#e7c7a3"/>' +
+      '<path d="M-4,-16 Q-5,-21 0,-22 Q5,-21 4,-16 Q2,-18 0,-17 Q-2,-18 -4,-16 Z" fill="#3a3028"/>' +
+      '<circle class="t-status" cx="7" cy="-20" r="5" fill="' + stateColor + '"/><text x="7" y="-18" text-anchor="middle" font-size="5.6" fill="#fff8e9">' + stateGlyph + '</text>' +
+      (isPlayer ? '<path d="M-8,-23 L0,-27 L8,-23" fill="none" stroke="#d8b96b" stroke-width="1.2"/>' : '') +
+      '<text class="token-name" x="0" y="9" text-anchor="middle">' + h(d.name) + '</text>' +
+      '</g>';
+  }
+
+  function mapSvg() {
+    var state = UI.game;
+    if (!state) return '';
+    var zoom = UI.mapZoom || 1;
+    var vw = MAP_BASE.w / zoom, vh = MAP_BASE.h / zoom;
+    var vx = MAP_BASE.x + (MAP_BASE.w - vw) / 2, vy = MAP_BASE.y + (MAP_BASE.h - vh) / 2;
+    var viewBox = vx + ' ' + vy + ' ' + vw + ' ' + vh;
+    var parts = [];
+    parts.push('<svg class="map-svg" viewBox="' + viewBox + '" role="img" aria-label="青崖山宗门舆图">');
+    parts.push('<defs>' +
+      '<linearGradient id="mapSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--map-sky-a)"/><stop offset="1" style="stop-color:var(--map-sky-b)"/></linearGradient>' +
+      '<radialGradient id="spiritGlow"><stop offset="0" stop-color="#b9e0cf" stop-opacity=".8"/><stop offset="1" stop-color="#b9e0cf" stop-opacity="0"/></radialGradient>' +
+      '<filter id="softGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+      '</defs>');
+    parts.push('<rect x="0" y="0" width="780" height="520" fill="url(#mapSky)"/>');
+    // 远山
+    parts.push('<path d="M-40 175 Q90 74 190 154 T410 130 T640 158 Q720 120 830 170 L830 0 L-40 0 Z" fill="var(--map-hill-a)" opacity=".8"/>');
+    parts.push('<path d="M-40 205 Q120 126 250 187 T500 160 T830 190 L830 80 Q710 148 640 110 T410 100 T190 128 Q70 160 -40 118 Z" fill="var(--map-hill-b)" opacity=".65"/>');
+    // 地块
+    var rows = state.map || [];
+    for (var y = 0; y < rows.length; y++) {
+      for (var x = 0; x < rows[y].length; x++) {
+        var t = rows[y][x];
+        var p = iso(x, y);
+        var cls = { G: 'grass', F: 'forest', M: 'mountain', W: 'water', S: 'spirit' }[t] || 'grass';
+        var buildable = t === 'G' && !E.buildingAt(state, x, y);
+        var selected = UI.tile && UI.tile.x === x && UI.tile.y === y ? ' tile-selected' : '';
+        if (UI.buildType && buildable) cls += ' buildable';
+        parts.push('<g class="tile tile-' + cls + selected + '" data-tile="' + x + ',' + y + '">' +
+          '<polygon points="' + tilePoly(p.x, p.y, 0) + '"/>' +
+          '<polygon class="tile-edge" points="' + tilePoly(p.x, p.y, 0) + '"/>' +
+          (UI.buildType && buildable ? '<text class="build-plus" x="' + p.x + '" y="' + (p.y + 3) + '" text-anchor="middle">＋</text>' : '') +
+          '</g>');
+      }
+    }
+    // 小径
+    (state.paths || []).forEach(function (pt) {
+      var p = iso(pt[0], pt[1]);
+      parts.push('<polygon class="path-tile" points="' + tilePoly(p.x, p.y, 5) + '"/>');
+      parts.push('<circle cx="' + (p.x - 7) + '" cy="' + (p.y + 1) + '" r="1" fill="#9e8a68" opacity=".55"/><circle cx="' + (p.x + 5) + '" cy="' + (p.y + 3) + '" r="1" fill="#9e8a68" opacity=".4"/>');
     });
-  };
+    // 装饰
+    rows.forEach(function (row, yy) {
+      row.forEach(function (t, xx) {
+        var p = iso(xx, yy);
+        var seed = hashStr(xx + ':' + yy + ':' + state.rngSeed);
+        if (t === 'F') {
+          parts.push(treeSvg(p.x - 8, p.y + 2, seed, 0.9 + (seed % 4) * 0.08));
+          if (seed % 3 === 0) parts.push(treeSvg(p.x + 10, p.y - 3, seed + 7, 0.7));
+        } else if (t === 'M') {
+          parts.push(rockSvg(p.x, p.y, seed, 0.9 + (seed % 3) * 0.12));
+        } else if (t === 'W') {
+          parts.push(waterRipple(p.x, p.y, seed));
+        } else if (t === 'S') {
+          parts.push('<circle cx="' + p.x + '" cy="' + p.y + '" r="26" fill="url(#spiritGlow)"/><circle cx="' + p.x + '" cy="' + p.y + '" r="9" fill="none" stroke="#8bc0ae" stroke-width="1" stroke-dasharray="3 4" class="array-ring"/>');
+        } else if (t === 'G' && seed % 9 === 0 && !E.buildingAt(state, xx, yy)) {
+          parts.push('<path d="M' + (p.x - 4) + ' ' + (p.y + 2) + ' q3 -5 6 0" stroke="#7e9a5e" stroke-width="1" fill="none" opacity=".7"/><circle cx="' + (p.x + 2) + '" cy="' + (p.y - 1) + '" r="1.3" fill="#d6c27c" opacity=".8"/>');
+        }
+      });
+    });
+    // 山门小景
+    (D.DECOR || []).forEach(function (item) { parts.push(decorSvg(item)); });
+    // 建筑（按等距深度排序）
+    state.buildings.slice().sort(function (a, b) { return (a.x + a.y) - (b.x + b.y) || a.x - b.x; }).forEach(function (b) {
+      parts.push(buildingGroup(b));
+    });
+    // 弟子
+    state.disciples.filter(function (d) { return !d.dead && !d.missionId; }).sort(function (a, b) {
+      return unitPosition(a).y - unitPosition(b).y;
+    }).forEach(function (d) { parts.push(tokenSvg(d)); });
+    // 云影
+    parts.push('<g class="cloud-shadows"><ellipse cx="180" cy="250" rx="130" ry="34" fill="#fff" opacity=".13"/><ellipse cx="560" cy="345" rx="160" ry="40" fill="#fff" opacity=".11"/><ellipse cx="420" cy="130" rx="100" ry="24" fill="#fff" opacity=".1"/></g>');
+    parts.push('</svg>');
+    return parts.join('');
+  }
+
+  function weatherLayer() {
+    var w = weather();
+    var n = w.id === 'rain' ? 26 : w.id === 'snow' ? 30 : w.id === 'fog' ? 3 : 12;
+    var items = '';
+    for (var i = 0; i < n; i++) {
+      var seed = hashStr(i + ':' + w.id + ':' + UI.game.day);
+      var left = seed % 100;
+      var delay = ((seed >> 8) % 100) / 10;
+      var dur = 3 + ((seed >> 12) % 40) / 10;
+      var size = 2 + ((seed >> 16) % 4);
+      var cls = w.id === 'rain' ? 'rain' : w.id === 'snow' ? 'snow' : w.id === 'fog' ? 'fog' : 'petal';
+      items += '<i class="' + cls + '" style="left:' + left + '%;animation-delay:-' + delay + 's;animation-duration:' + dur + 's;--s:' + size + 'px"></i>';
+    }
+    return '<div class="weather-layer weather-' + w.id + '" aria-hidden="true">' + items + '</div>';
+  }
 
   /* ------------------------------------------------------------------ */
-  /* 标题页                                                              */
+  /* 氛围图                                                             */
   /* ------------------------------------------------------------------ */
+  function landingArt() {
+    return '<svg class="landing-svg" viewBox="0 0 720 780" aria-hidden="true">' +
+      '<defs><linearGradient id="lgSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#efe6d1"/><stop offset=".62" stop-color="#e3dcc6"/><stop offset="1" stop-color="#cdd4bf"/></linearGradient>' +
+      '<linearGradient id="lgM1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9cac99"/><stop offset="1" stop-color="#6f887a"/></linearGradient>' +
+      '<linearGradient id="lgM2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#708879"/><stop offset="1" stop-color="#475f57"/></linearGradient>' +
+      '<linearGradient id="lgM3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f675d"/><stop offset="1" stop-color="#2f443f"/></linearGradient>' +
+      '<radialGradient id="lgMoon"><stop offset="0" stop-color="#fff8dc"/><stop offset="1" stop-color="#ead9a9"/></radialGradient>' +
+      '<clipPath id="lgCardClip"><rect x="1" y="1" width="718" height="778" rx="26"/></clipPath></defs>' +
+      '<g clip-path="url(#lgCardClip)">' +
+      '<rect x="1" y="1" width="718" height="778" rx="26" fill="url(#lgSky)" opacity=".62"/>' +
+      '<circle cx="524" cy="154" r="63" fill="url(#lgMoon)" opacity=".9"/>' +
+      '<circle cx="524" cy="154" r="96" fill="none" stroke="#d8c99e" stroke-width=".7" opacity=".5"/>' +
+      '<g class="landing-cloud c1"><ellipse cx="190" cy="180" rx="130" ry="20" fill="#f7f0df" opacity=".55"/><ellipse cx="280" cy="168" rx="90" ry="14" fill="#f7f0df" opacity=".4"/></g>' +
+      '<g class="landing-cloud c2"><ellipse cx="560" cy="300" rx="150" ry="18" fill="#f7f0df" opacity=".4"/></g>' +
+      '<path d="M-20 500 Q90 350 190 420 Q260 470 330 390 Q420 290 500 410 Q570 500 740 430 L740 780 L-20 780 Z" fill="url(#lgM1)" opacity=".75"/>' +
+      '<path d="M-20 590 Q120 440 230 520 Q320 580 400 500 Q480 420 560 520 Q640 600 740 540 L740 780 L-20 780 Z" fill="url(#lgM2)" opacity=".88"/>' +
+      '<path d="M-20 700 Q100 570 220 640 Q300 690 380 610 Q470 520 560 630 Q640 710 740 650 L740 780 L-20 780 Z" fill="url(#lgM3)"/>' +
+      '<path d="M0 610 Q160 560 320 600 T720 575" stroke="#f5eddb" stroke-width="26" fill="none" opacity=".24"/>' +
+      '<path d="M0 676 Q180 640 350 675 T720 650" stroke="#f5eddb" stroke-width="18" fill="none" opacity=".18"/>' +
+      // 松树
+      '<g fill="#314941">' +
+      '<path d="M158 612 l-18 46 h10 l-12 28 h40 l-12 -28 h10 z"/><path d="M130 674 l8 16 M186 674 l-8 16" stroke="#314941" stroke-width="6"/>' +
+      '<path d="M592 590 l-16 42 h9 l-11 26 h36 l-11 -26 h9 z"/><path d="M570 650 l7 14 M614 650 l-7 14" stroke="#314941" stroke-width="5"/>' +
+      '</g>' +
+      // 山门
+      '<g transform="translate(394,586)" class="landing-gate">' +
+      '<path d="M-54 60 L54 60 L44 72 L-44 72 Z" fill="#3f5148"/>' +
+      '<path d="M-40 58 L-40 -30 L-31 -30 L-31 58 M40 58 L40 -30 L31 -30 L31 58" fill="#7e4539"/>' +
+      '<path d="M-54 -28 L0 -58 L54 -28 L0 -14 Z" fill="#4a332b"/>' +
+      '<path d="M-54 -28 L0 -58 L0 -14 Z" fill="#3a2721"/>' +
+      '<rect x="-16" y="-27" width="32" height="12" rx="1.5" fill="#a33b2a"/><text x="0" y="-18" text-anchor="middle" font-size="8" fill="#f1e4cb" font-family="serif">青崖</text>' +
+      '<circle cx="0" cy="18" r="28" fill="#e6bd6a" opacity=".12"/><rect x="-6" y="8" width="12" height="18" fill="#d8a75a" opacity=".85"/>' +
+      '</g>' +
+      '<g class="landing-birds" fill="none" stroke="#48594f" stroke-width="2" stroke-linecap="round"><path d="M250 250 q8 -8 16 0 q8 -8 16 0"/><path d="M300 225 q6 -6 12 0 q6 -6 12 0"/><path d="M210 300 q5 -5 10 0 q5 -5 10 0"/></g>' +
+      '<g class="landing-mist"><ellipse cx="350" cy="610" rx="300" ry="26" fill="#f4ecdb" opacity=".35"/><ellipse cx="470" cy="555" rx="220" ry="18" fill="#f4ecdb" opacity=".25"/></g>' +
+      '</g>' +
+      '<rect x="1" y="1" width="718" height="778" rx="26" fill="none" stroke="rgba(120,98,66,.2)" stroke-width="1.5"/>' +
+      '</svg>';
+  }
 
+  function eventArt(type) {
+    var base = '<svg class="event-scene" viewBox="0 0 800 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">' +
+      '<defs><linearGradient id="eaSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9e0ca"/><stop offset="1" stop-color="#c8d2c1"/></linearGradient></defs>' +
+      '<rect width="800" height="220" fill="url(#eaSky)"/>' +
+      '<circle cx="650" cy="66" r="38" fill="#f7edcb" opacity=".9"/>' +
+      '<path d="M-20 178 Q110 88 230 150 T470 130 T820 158 L820 240 L-20 240 Z" fill="#9caf9c" opacity=".7"/>' +
+      '<path d="M-20 200 Q130 128 280 180 T540 160 T820 188 L820 240 L-20 240 Z" fill="#5a7468" opacity=".75"/>' +
+      '<path d="M-20 225 Q180 180 380 212 T820 198 L820 240 L-20 240 Z" fill="#31463f"/>';
+    var extra = '';
+    if (type === 'rain') {
+      extra = '<g stroke="#d7e5e0" stroke-width="1.4" opacity=".6">' + Array.from({ length: 24 }, function (_, i) {
+        var x = (i * 97) % 800, y = (i * 43) % 180;
+        return '<path d="M' + x + ' ' + y + ' l-8 18"/>';
+      }).join('') + '</g>';
+    } else if (type === 'beast') {
+      extra = '<g fill="#2f3c34"><path d="M120 195 q10 -50 34 -58 q24 8 34 58 z"/><path d="M150 142 l-10 -18 l20 8 z M172 140 l12 -18 l-4 21 z"/><circle cx="152" cy="157" r="2.5" fill="#d9a64e"/><circle cx="172" cy="157" r="2.5" fill="#d9a64e"/></g><g fill="#e8c46b"><circle cx="152" cy="157" r="1" /><circle cx="172" cy="157" r="1"/></g>';
+    } else if (type === 'merchant') {
+      extra = '<g transform="translate(120,154)" fill="#4f3b2d"><rect x="0" y="-18" width="96" height="26" rx="3"/><path d="M8 8 L4 24 M88 8 L92 24" stroke="#4f3b2d" stroke-width="3"/><circle cx="22" cy="28" r="10" fill="none" stroke="#4f3b2d" stroke-width="3"/><circle cx="74" cy="28" r="10" fill="none" stroke="#4f3b2d" stroke-width="3"/><path d="M-8 -18 Q48 -42 104 -18" fill="none" stroke="#8f6a43" stroke-width="2"/></g><g fill="#6f5a42"><rect x="140" y="130" width="18" height="18"/><rect x="164" y="136" width="14" height="12"/></g>';
+    } else if (type === 'sword') {
+      extra = '<g transform="translate(600,170) rotate(-18)" stroke="#f1e7d2" stroke-width="3"><path d="M0 0 L0 -120" /><path d="M-18 -12 L18 -12" /><path d="M0 0 L0 28" stroke="#a33b2a" stroke-width="5"/></g><path d="M560 180 q30 -40 70 -54" stroke="#f1e7d2" stroke-width="2" opacity=".3" fill="none"/>';
+    } else if (type === 'plague') {
+      extra = '<g fill="#ded4c2" opacity=".55"><circle cx="160" cy="160" r="28"/><circle cx="205" cy="130" r="38"/><circle cx="260" cy="162" r="24"/><circle cx="620" cy="150" r="24"/><circle cx="665" cy="125" r="32"/></g>';
+    } else if (type === 'crane') {
+      extra = '<g transform="translate(520,120)" fill="#f4eddc" stroke="#5d6f64" stroke-width="1.4"><path d="M0 0 q20 -28 48 -20 q22 8 20 28 q-4 18 -26 18 q-26 0 -42 -26 z"/><path d="M46 -18 q12 -8 20 -2 l-10 10" fill="none"/><path d="M10 22 l-4 34 M28 22 l4 34" stroke="#5d6f64"/><circle cx="62" cy="-13" r="2" fill="#a33b2a"/></g>';
+    } else if (type === 'assembly') {
+      extra = '<g transform="translate(600,170)"><path d="M0 0 L0 -70" stroke="#5d4a36" stroke-width="3"/><path d="M0 -70 q28 10 48 0 l-10 28 q-20 8 -38 0 z" fill="#a33b2a"/></g><g transform="translate(680,180)"><path d="M0 0 L0 -52" stroke="#5d4a36" stroke-width="2"/><path d="M0 -52 q22 8 38 0 l-8 22 q-16 6 -30 0 z" fill="#b08a4a"/></g>';
+    } else if (type === 'moon') {
+      extra = '<circle cx="650" cy="66" r="58" fill="none" stroke="#f7edcb" stroke-width="1" opacity=".5"/><path d="M120 190 q18 -42 38 0" stroke="#31463f" stroke-width="3" fill="none"/><path d="M138 176 l-2 -20 M150 176 l4 -18" stroke="#31463f" stroke-width="2"/>';
+    } else {
+      extra = '<path d="M120 198 q20 -80 46 -80 q26 0 46 80" fill="#31463f" opacity=".75"/><path d="M150 158 l-8 -18 l16 8 z M174 156 l10 -18 l0 20 z" fill="#31463f"/>';
+    }
+    return base + extra + '</svg>';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 落地页 / 建号                                                      */
+  /* ------------------------------------------------------------------ */
   function renderLanding() {
-    var meta = E.getMeta();
+    stopTimer();
+    UI.game = null;
+    UI.modalOpen = false;
     var hasSave = E.hasSave();
-    var legacy = meta.ascensions > 0 ? '<div class="legacy-line">轮回印记 ×' + meta.ascensions + (meta.lastName ? ' · 前世道号「' + esc(meta.lastName) + '」' : '') + '</div>' : '';
-    return '<div class="landing">' +
-      '<div class="landing-art">' + inkArt('landing') + '</div>' +
+    var app = document.getElementById('app');
+    app.innerHTML = '<div class="landing">' +
+      '<div class="landing-grain"></div>' +
       '<div class="landing-inner">' +
-      '<div class="landing-seal" aria-hidden="true"><span>念</span></div>' +
-      '<p class="landing-kicker">文字修仙 · 问道长生</p>' +
-      '<h1 class="landing-title">一念长生</h1>' +
-      '<p class="landing-sub">' + esc(D.SUBTITLE) + '</p>' +
-      '<p class="landing-quote">' + esc(D.QUOTES[0]) + '</p>' +
-      legacy +
+      '<section class="landing-copy">' +
+      '<div class="landing-brand"><span class="brand-seal large">念</span><span>青崖山 · 宗门纪</span></div>' +
+      '<p class="eyebrow">FOUND A SECT · SEEK THE WAY</p>' +
+      '<h1>一念长生</h1>' +
+      '<p class="landing-sub">从三间茅屋，到一座仙门。</p>' +
+      '<p class="landing-intro">旧宗覆灭，你带着半卷残经与几名弟子，在青崖山重新立下山门。让外门弟子种田烧饭，让内门弟子吐纳修行；修屋、炼丹、参研、历练，等一个山门钟声响彻天下的日子。</p>' +
       '<div class="landing-actions">' +
-      (hasSave ? '<button class="btn btn-primary btn-lg" data-action="continue">' + icon('arrow') + '继续修行</button>' : '') +
-      '<button class="btn ' + (hasSave ? 'btn-ghost' : 'btn-primary') + ' btn-lg" data-action="new-game">' + (hasSave ? '重入轮回' : '踏入仙途') + '</button>' +
+      (hasSave ? '<button class="btn btn-primary btn-lg" data-action="continue">继续前缘</button><button class="btn btn-ghost btn-lg" data-action="new-game">重开山门</button>' : '<button class="btn btn-primary btn-lg" data-action="new-game">开宗立派</button><button class="btn btn-ghost btn-lg" data-action="help">玩法说明</button>') +
       '</div>' +
       '<div class="landing-features">' +
-      '<span>打坐炼气</span><i></i><span>历练奇遇</span><i></i><span>突破境界</span><i></i><span>羽化飞升</span>' +
+      '<div><b>经营山门</b><span>建房、布局、风水与四时生产</span></div>' +
+      '<div><b>培养弟子</b><span>内门外门、需求心境、破境飞升</span></div>' +
+      '<div><b>应对江湖</b><span>历练、商队、兽潮与仙门大比</span></div>' +
       '</div>' +
-      '<p class="landing-foot">本地存档 · 无需联网 · 适配手机</p>' +
-      '</div>' +
-      '</div>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 角色创建                                                            */
-  /* ------------------------------------------------------------------ */
-
-  UI.newCreation = function () {
-    return {
-      step: 0,
-      name: E.randomName(),
-      root: 'fire',
-      origin: 'orphan',
-      daoheart: 'longevity'
-    };
-  };
-
-  function creationDots(step) {
-    var out = '<div class="step-dots" aria-label="第 ' + (step + 1) + ' 步，共 3 步">';
-    for (var i = 0; i < 3; i++) out += '<i class="' + (i === step ? 'on' : (i < step ? 'done' : '')) + '"></i>';
-    return out + '</div>';
-  }
-
-  function optionCard(kind, value, selected, glyph, name, desc, bonus) {
-    return '<button class="option-card' + (selected ? ' selected' : '') + '" data-action="select-' + kind + '" data-value="' + esc(value) + '" aria-pressed="' + (selected ? 'true' : 'false') + '">' +
-      '<span class="option-glyph">' + esc(glyph) + '</span>' +
-      '<span class="option-body"><b>' + esc(name) + '</b><small>' + esc(desc) + '</small>' +
-      '<em>' + esc(bonus) + '</em></span>' +
-      '<span class="option-check">' + (selected ? icon('check') : '') + '</span>' +
-      '</button>';
+      '<p class="landing-foot">原创网页作品 · 适配手机 · 存档保存在本机 · 无需安装</p>' +
+      '</section>' +
+      '<section class="landing-art">' + landingArt() + '<div class="landing-stamp">青崖<br>山门</div></section>' +
+      '</div></div>';
   }
 
   function renderCreation() {
-    var c = UI.creation;
-    var meta = E.getMeta();
-    var body = '';
-    if (c.step === 0) {
-      body = '<div class="form-block">' +
-        '<label class="field-label" for="daohao">道号</label>' +
-        '<div class="name-row"><input id="daohao" class="name-input" data-name-input maxlength="8" autocomplete="off" value="' + esc(c.name) + '" placeholder="取一个道号">' +
-        '<button class="btn btn-ghost btn-sm" data-action="random-name">换一个</button></div>' +
-        '<p class="field-hint">最多八字。名字只是一个称呼，路要自己走。</p>' +
-        '</div>' +
-        '<div class="form-block"><span class="field-label">出身</span><div class="option-list">' +
-        Object.keys(D.ORIGINS).map(function (k) {
-          var o = D.ORIGINS[k];
-          return optionCard('origin', k, c.origin === k, o.glyph, o.name, o.desc, o.bonusText);
-        }).join('') + '</div></div>';
-    } else if (c.step === 1) {
-      body = '<div class="form-block"><span class="field-label">灵根</span>' +
-        '<p class="field-hint">灵根决定你与哪一种天地灵气的亲和。五行无高下，只有合不合你。</p>' +
-        '<div class="option-list root-list">' +
-        ['metal', 'wood', 'water', 'fire', 'earth'].map(function (k) {
-          var o = D.ROOTS[k];
-          return optionCard('root', k, c.root === k, o.glyph, o.name, o.desc, o.bonusText);
-        }).join('') + '</div></div>';
-    } else {
-      var root = D.ROOTS[c.root], origin = D.ORIGINS[c.origin], heart = D.DAOHEARTS[c.daoheart];
-      body = '<div class="form-block"><span class="field-label">道心</span>' +
-        '<p class="field-hint">你为何修行？这个答案会在很多个关口替你做决定。</p>' +
-        '<div class="option-list">' +
-        Object.keys(D.DAOHEARTS).map(function (k) {
-          var o = D.DAOHEARTS[k];
-          return optionCard('daoheart', k, c.daoheart === k, o.glyph, o.name, o.desc, o.bonusText);
-        }).join('') + '</div></div>' +
-        '<div class="creation-summary panel">' +
-        '<div class="summary-head"><span class="summary-seal">' + esc((c.name || '无名').charAt(0)) + '</span><div><b>' + esc(c.name || '无名') + '</b><small>' + esc(root.name) + ' · ' + esc(origin.name) + ' · ' + esc(heart.name) + '</small></div></div>' +
-        '<div class="summary-grid">' +
-        '<div><span>灵根</span><b>' + esc(root.name) + '</b></div>' +
-        '<div><span>出身</span><b>' + esc(origin.name) + '</b></div>' +
-        '<div><span>道心</span><b>' + esc(heart.name) + '</b></div>' +
-        '<div><span>初始寿元</span><b>' + (80 + (heart.mods.life || 0)) + ' 年</b></div>' +
-        '</div>' +
-        (meta.ascensions > 0 ? '<p class="legacy-note">轮回印记：悟性 +' + Math.min(9, meta.ascensions) + ' · 气运 +' + Math.min(9, meta.ascensions) + ' · 灵石 +' + (50 * Math.min(9, meta.ascensions)) + '</p>' : '') +
-        '</div>';
-    }
-
-    return '<div class="creation-screen">' +
-      '<div class="creation-art">' + inkArt('landing') + '</div>' +
-      '<div class="creation-inner">' +
-      '<header class="creation-head">' +
-      '<button class="btn btn-quiet btn-sm" data-action="creation-back">' + (c.step === 0 ? '返回标题' : '上一步') + '</button>' +
-      creationDots(c.step) +
-      '<span class="creation-step">' + ['出身', '灵根', '道心'][c.step] + '</span>' +
-      '</header>' +
-      '<div class="creation-title"><p class="eyebrow">问心 · 第一步</p><h1>' + ['你是谁', '你从何处来', '你往何处去'][c.step] + '</h1></div>' +
-      '<div class="creation-body">' + body + '</div>' +
-      '<footer class="creation-actions">' +
-      (c.step < 2
-        ? '<button class="btn btn-primary btn-wide" data-action="creation-next">下一步 ' + icon('arrow') + '</button>'
-        : '<button class="btn btn-primary btn-wide" data-action="start-game">' + icon('spark') + '踏入仙途</button>') +
-      '</footer>' +
-      '</div>' +
-      '</div>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 游戏主界面                                                          */
-  /* ------------------------------------------------------------------ */
-
-  function navButton(item, active) {
-    return '<button class="nav-btn' + (active ? ' active' : '') + '" data-action="nav" data-screen="' + item.id + '"' +
-      (active ? ' aria-current="page"' : '') + '>' + icon(item.icon) + '<span>' + item.label + '</span></button>';
-  }
-
-  function renderTopbar() {
-    var s = UI.state;
-    var date = E.dateInfo(s);
-    return '<header class="topbar"><div class="topbar-inner">' +
-      '<div class="brand"><span class="brand-seal">念</span><span class="brand-text"><b>一念长生</b><small>文字修仙</small></span></div>' +
-      '<div class="top-meta">' +
-      '<span class="chip chip-date">' + icon('calendar') + esc(date.label) + '</span>' +
-      '<span class="chip chip-stone">' + icon('coin') + '<b>' + fmt(s.player.stones) + '</b> 灵石</span>' +
-      '<button class="icon-btn" data-action="settings" aria-label="设置">' + icon('settings') + '</button>' +
-      '</div></div></header>';
-  }
-
-  function renderCharacterPanel() {
-    var s = UI.state;
-    var p = s.player;
-    var d = E.derived(s);
-    var need = E.expNeed(s);
-    var info = E.stageInfo(s);
-    var root = D.ROOTS[p.root] || D.ROOTS.fire;
-    var origin = D.ORIGINS[p.origin] || D.ORIGINS.orphan;
-    var full = p.exp >= need;
-    return '<aside class="sidebar">' +
-      '<section class="panel char-card">' +
-      '<div class="char-head">' +
-      '<div class="avatar" aria-hidden="true"><span>' + esc(p.name.charAt(0)) + '</span><i>' + esc(root.glyph) + '</i></div>' +
-      '<div class="char-id"><h2>' + esc(p.name) + '</h2>' +
-      '<p class="realm-line">' + esc(info.name) + (full ? ' <span class="ready-mark">可突破</span>' : '') + '</p>' +
-      '<p class="char-sub">寿 ' + E.age(s) + '/' + fmt(p.lifespan) + ' · ' + esc(root.name) + ' · ' + esc(origin.name) + '</p></div>' +
-      '</div>' +
-      '<div class="vitals">' +
-      barRow('修为', p.exp, need, 'exp') +
-      barRow('气血', p.hp, d.hpMax, 'hp') +
-      barRow('灵力', p.mp, d.mpMax, 'mp') +
-      '</div>' +
-      '<div class="stat-grid">' +
-      '<div><span>攻击</span><b>' + fmt(d.atk) + '</b></div>' +
-      '<div><span>防御</span><b>' + fmt(d.def) + '</b></div>' +
-      '<div><span>神识</span><b>' + fmt(d.sense) + '</b></div>' +
-      '<div><span>悟性</span><b>' + fmt(d.comp) + '</b></div>' +
-      '<div><span>气运</span><b>' + fmt(d.luck) + '</b></div>' +
-      '<div><span>寿元</span><b>' + E.age(s) + '/' + fmt(p.lifespan) + '</b></div>' +
-      '</div>' +
-      '<div class="char-foot"><span>' + icon('spark') + '修炼速度 ' + pct(d.rate) + '% / 月</span><span>' + icon('heart') + '疗伤 +' + pct(d.heal) + '%</span></div>' +
-      '</section>' +
-      '<nav class="side-nav" aria-label="主导航">' + D.UI.nav.map(function (n) { return navButton(n, UI.screen === n.id); }).join('') + '</nav>' +
-      '</aside>';
-  }
-
-  function renderBottomNav() {
-    return '<nav class="bottom-nav" aria-label="主导航">' +
-      D.UI.nav.map(function (n) { return navButton(n, UI.screen === n.id); }).join('') +
-      '</nav>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 修炼                                                                */
-  /* ------------------------------------------------------------------ */
-
-  function renderEndedScreen() {
-    var s = UI.state;
-    var ascended = s.ended === 'ascended';
-    return '<div class="screen">' +
-      screenHead(ascended ? '此世 · 圆满' : '此世 · 终章', ascended ? '羽化飞升' : '坐化', ascended ? '云海之上，再无归途。' : '尘缘已尽，道途止于此。', ascended ? '仙' : '寂') +
-      '<section class="panel ended-panel">' +
-      '<p class="ended-text">' + (ascended
-        ? '你已渡过九霄雷劫，踏碎最后一道壁障。人间从此少了一个修士，天上多了一位仙人。'
-        : '你在蒲团上闭上眼，这一世的长生路到此为止。留下的，只有山中一段传闻。') + '</p>' +
-      '<div class="modal-actions">' +
-      '<button class="btn btn-primary" data-action="show-ending">回望此生</button>' +
-      '<button class="btn btn-ghost" data-action="reincarnate">转世重修</button>' +
-      '</div></section></div>';
-  }
-
-  function renderCultivate() {
-    var s = UI.state;
-    if (s.ended) return renderEndedScreen();
-    var p = s.player;
-    var d = E.derived(s);
-    var need = E.expNeed(s);
-    var info = E.stageInfo(s);
-    var full = p.exp >= need;
-    var gain = Math.max(1, Math.round(need * d.rate));
-    var closedGain = Math.max(1, Math.round(need * d.rate * 6 * 0.72));
-    var chance = E.breakthroughChance(s, UI.settings.usePill);
-    var pillCount = E.countItem(s, 'pojing');
-    var tech = d.technique;
-    var skill = d.skill;
-
-    var headHtml = screenHead('静室 · 吐纳', '修行', '山中无甲子，寒尽不知年。', '修');
-    var heroPanel = '<section class="panel hero">' + inkArt() +
-      '<div class="hero-content"><p class="eyebrow">' + esc(info.realm.name) + ' · ' + esc(info.layerLabel || '圆满') + '</p>' +
-      '<h2>' + (full ? '气机圆满，壁障在前' : '呼吸之间，天地渐宽') + '</h2>' +
-      '<p class="hero-quote">' + esc(currentQuote(s)) + '</p>' +
-      '<div class="hero-meta"><span>修为 ' + fmt(p.exp) + ' / ' + fmt(need) + '</span><span>下一次突破 · ' + esc(nextStageName(s)) + '</span></div></div>' +
-      '</section>';
-
-    var actionsHtml = '<div class="action-grid">' +
-      '<button class="action-btn primary" data-action="meditate"' + (full ? ' disabled' : '') + '>' +
-      '<span class="action-icon">' + icon('lotus') + '</span>' +
-      '<span class="action-body"><b>打坐一月</b><small>' + (full ? '修为已满，先冲关' : '收束心神，吐纳灵气') + '</small></span>' +
-      '<span class="action-meta">' + (full ? '—' : '+' + fmt(gain) + ' 修为') + '<i>耗时 1 月</i></span>' +
-      '</button>' +
-      '<button class="action-btn" data-action="closed"' + (full ? ' disabled' : '') + '>' +
-      '<span class="action-icon">' + icon('spark') + '</span>' +
-      '<span class="action-body"><b>闭关六月</b><small>' + (full ? '修为已满，先冲关' : '封门静修，进境更快，亦有心魔') + '</small></span>' +
-      '<span class="action-meta">' + (full ? '—' : '+' + fmt(closedGain) + ' 修为') + '<i>耗时 6 月</i></span>' +
-      '</button>' +
-      '</div>';
-
-    var breakHtml = '<section class="panel break-card' + (full ? ' ready' : '') + '" id="breakthrough-card">' +
-      '<div class="panel-head"><div><p class="eyebrow">冲关</p><h3>突破壁障</h3></div>' + (full ? '<span class="badge badge-gold">时机已至</span>' : '<span class="badge">修为未满</span>') + '</div>' +
-      '<p class="panel-text">' + (full
-        ? (info.isFinalLayer ? '你已站在渡劫期的尽头。头顶雷云汇聚，天门若隐若现。' : '丹田中的灵气已经满溢，只差最后一步，便能踏入「' + esc(nextStageName(s)) + '」。')
-        : '再积攒 ' + fmt(need - p.exp) + ' 点修为，便可尝试冲关。') + '</p>' +
-      (full ? '' : '<div class="break-progress">' + barRow('修为进度', p.exp, need, 'exp') + '</div>') +
-      (full ? '<div class="break-row">' +
-        '<div class="chance-box"><span>成功率</span><b>' + pct(chance) + '%</b>' + (p.breakthroughBuff > 0 ? '<small>（含失败心得 +' + pct(p.breakthroughBuff) + '%）</small>' : '') + '</div>' +
-        (pillCount > 0 ? '<label class="check-line"><input type="checkbox" data-action="toggle-pill" ' + (UI.settings.usePill ? 'checked' : '') + '> 服用破境丹 <em>+25% · 余 ' + pillCount + '</em></label>' : '<span class="muted-note">坊市有售破境丹，可提升成功率。</span>') +
-        '<button class="btn btn-primary" data-action="breakthrough">' + (info.isFinalLayer ? '渡劫飞升' : '冲关突破') + '</button>' +
-        '</div>' : '') +
-      '</section>';
-
-    var restHtml = '<div class="grid-2">' +
-      '<section class="panel compact">' +
-      '<div class="panel-head"><div><p class="eyebrow">功法</p><h3>' + esc(tech.name) + '</h3></div><span class="glyph-badge">' + esc(tech.glyph) + '</span></div>' +
-      '<p class="panel-text">' + esc(tech.desc) + '</p>' +
-      '<div class="mini-list"><span>修炼速度 <b>+' + pct(tech.cult) + '%</b></span>' + (modsText(tech.mods) ? '<span>' + esc(modsText(tech.mods)) + '</span>' : '') + '</div>' +
-      (skill ? '<div class="skill-line"><span>' + icon('sword') + ' ' + esc(skill.name) + '</span><span>灵力 ' + skill.cost + '</span></div>' : '') +
-      '<button class="btn btn-ghost btn-sm" data-action="nav" data-screen="character" data-tab="skills">查看功法</button>' +
-      '</section>' +
-      '<section class="panel compact">' +
-      '<div class="panel-head"><div><p class="eyebrow">道基</p><h3>此身根本</h3></div><span class="glyph-badge">' + esc(D.ROOTS[p.root].glyph) + '</span></div>' +
-      '<div class="detail-rows">' +
-      '<div><span>灵根</span><b>' + esc(D.ROOTS[p.root].name) + '</b></div>' +
-      '<div><span>道心</span><b>' + esc(D.DAOHEARTS[p.daoheart].name) + '</b></div>' +
-      '<div><span>年岁</span><b>' + E.age(s) + ' / ' + fmt(p.lifespan) + ' 岁</b></div>' +
-      '<div><span>暴击</span><b>' + pct(d.crit) + '%</b></div>' +
-      '</div>' +
-      '<button class="btn btn-ghost btn-sm" data-action="nav" data-screen="character">查看详情</button>' +
-      '</section>' +
-      '</div>' +
-      '<section class="panel">' +
-      '<div class="panel-head"><div><p class="eyebrow">近事</p><h3>山中纪事</h3></div><button class="text-btn" data-action="nav" data-screen="character" data-tab="journal">全部</button></div>' +
-      renderLog(5) +
-      '</section>';
-
-    return '<div class="screen">' + headHtml +
-      (full ? breakHtml + heroPanel + actionsHtml : heroPanel + actionsHtml + breakHtml) +
-      restHtml + '</div>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 历练                                                                */
-  /* ------------------------------------------------------------------ */
-
-  function renderExplore() {
-    var s = UI.state;
-    var p = s.player;
-    var regions = D.REGIONS;
-    var cards = regions.map(function (r) {
-      var locked = p.realm < r.unlockRealm;
-      var unlockName = D.REALMS[r.unlockRealm].name;
-      return '<article class="region-card' + (locked ? ' locked' : '') + '">' +
-        '<span class="region-glyph" aria-hidden="true">' + esc(r.glyph) + '</span>' +
-        '<div class="region-top"><div><h3>' + esc(r.name) + '</h3><p class="region-sub">' + dangerDots(r.danger) + '<span>危险 ' + r.danger + ' / 4</span></p></div>' +
-        (locked ? '<span class="badge">' + esc(unlockName) + '解锁</span>' : '<span class="badge badge-jade">可前往</span>') + '</div>' +
-        '<p class="region-desc">' + esc(r.desc) + '</p>' +
-        '<div class="region-foot"><span>耗时 ' + r.cost + ' 月</span>' +
-        (locked ? '<button class="btn btn-ghost btn-sm" disabled>修为不足</button>' : '<button class="btn btn-primary btn-sm" data-action="explore" data-region="' + r.id + '">前往历练</button>') + '</div>' +
-        '</article>';
+    var app = document.getElementById('app');
+    var origins = Object.keys(D.ORIGINS).map(function (k) {
+      var o = D.ORIGINS[k];
+      return '<button class="choice-card ' + (UI.create.origin === k ? 'active' : '') + '" data-action="choose-origin" data-value="' + k + '">' +
+        '<span class="choice-glyph">' + h(o.glyph) + '</span><b>' + h(o.name) + '</b><small>' + h(o.bonusText) + '</small><span class="choice-desc">' + h(o.desc) + '</span></button>';
     }).join('');
-
-    return '<div class="screen">' +
-      screenHead('山河 · 机缘', '历练', '山高水长，机缘与凶险往往结伴而行。', '历') +
-      '<section class="panel intro-panel"><p class="panel-text">每一次历练都会消耗时间，也可能遇见奇遇、妖物或故人。修为越高，能去的地方越远。</p>' +
-      '<div class="legend-row"><span>' + dangerDots(1) + ' 安稳</span><span>' + dangerDots(2) + ' 有险</span><span>' + dangerDots(3) + ' 凶险</span><span>' + dangerDots(4) + ' 九死一生</span></div></section>' +
-      '<div class="region-grid">' + cards + '</div>' +
-      '<section class="panel">' +
-      '<div class="panel-head"><div><p class="eyebrow">见闻</p><h3>近来行迹</h3></div><button class="text-btn" data-action="nav" data-screen="character" data-tab="journal">全部</button></div>' +
-      renderLog(8) +
-      '</section>' +
-      '</div>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 人物                                                                */
-  /* ------------------------------------------------------------------ */
-
-  function renderCharacter() {
-    var s = UI.state;
-    var p = s.player;
-    var d = E.derived(s);
-    var info = E.stageInfo(s);
-    var tabs = [['stats', '属性'], ['skills', '功法'], ['achievements', '成就'], ['journal', '见闻']];
-    var tabBar = '<div class="tabs" role="tablist">' + tabs.map(function (t) {
-      return '<button role="tab" aria-selected="' + (UI.charTab === t[0]) + '" class="' + (UI.charTab === t[0] ? 'on' : '') + '" data-action="char-tab" data-tab="' + t[0] + '">' + t[1] + '</button>';
-    }).join('') + '</div>';
-
-    var body = '';
-    if (UI.charTab === 'stats') {
-      var slots = [['weapon', '兵器'], ['armor', '护身'], ['accessory', '灵饰']];
-      body = '<div class="grid-2">' +
-        '<section class="panel"><div class="panel-head"><div><p class="eyebrow">根骨</p><h3>属性</h3></div><span class="badge badge-gold">' + esc(info.name) + '</span></div>' +
-        '<div class="stat-cards">' +
-        '<div><span>气血</span><b>' + fmt(p.hp) + '<small> / ' + fmt(d.hpMax) + '</small></b></div>' +
-        '<div><span>灵力</span><b>' + fmt(p.mp) + '<small> / ' + fmt(d.mpMax) + '</small></b></div>' +
-        '<div><span>攻击</span><b>' + fmt(d.atk) + '</b></div>' +
-        '<div><span>防御</span><b>' + fmt(d.def) + '</b></div>' +
-        '<div><span>神识</span><b>' + fmt(d.sense) + '</b></div>' +
-        '<div><span>悟性</span><b>' + fmt(d.comp) + '</b></div>' +
-        '<div><span>气运</span><b>' + fmt(d.luck) + '</b></div>' +
-        '<div><span>暴击</span><b>' + pct(d.crit) + '%</b></div>' +
-        '</div></section>' +
-        '<section class="panel"><div class="panel-head"><div><p class="eyebrow">来处</p><h3>此身</h3></div></div>' +
-        '<div class="detail-rows">' +
-        '<div><span>灵根</span><b>' + esc(D.ROOTS[p.root].name) + '</b></div>' +
-        '<div><span>出身</span><b>' + esc(D.ORIGINS[p.origin].name) + '</b></div>' +
-        '<div><span>道心</span><b>' + esc(D.DAOHEARTS[p.daoheart].name) + '</b></div>' +
-        '<div><span>年岁 / 寿元</span><b>' + E.age(s) + ' / ' + fmt(p.lifespan) + '</b></div>' +
-        '<div><span>修炼速度</span><b>' + pct(d.rate) + '% / 月</b></div>' +
-        '<div><span>疗伤加成</span><b>+' + pct(d.heal) + '%</b></div>' +
-        '<div><span>战斗收益</span><b>+' + pct(d.battleReward) + '%</b></div>' +
-        '<div><span>炼丹加成</span><b>+' + pct(d.alchemy) + '%</b></div>' +
-        '</div></section>' +
-        '</div>' +
-        '<section class="panel"><div class="panel-head"><div><p class="eyebrow">法器</p><h3>随身之物</h3></div></div>' +
-        '<div class="equip-grid">' +
-        slots.map(function (sl) {
-          var id = p.equipment[sl[0]];
-          if (!id) return '<div class="equip-slot empty"><span class="slot-label">' + sl[1] + '</span><b>空</b><small>可在行囊中装备</small></div>';
-          var item = D.ITEMS[id];
-          return '<div class="equip-slot r' + item.rarity + '"><span class="slot-label">' + sl[1] + '</span><div class="equip-line"><span class="item-glyph">' + esc(item.glyph) + '</span><div><b>' + esc(item.name) + '</b><small>' + esc(modsText(item.mods)) + '</small></div></div><button class="text-btn" data-action="unequip" data-slot="' + sl[0] + '">取下</button></div>';
-        }).join('') + '</div></section>';
-    } else if (UI.charTab === 'skills') {
-      var learned = p.learned.map(function (id) {
-        var t = D.TECHNIQUES[id];
-        var sk = D.SKILLS[t.skill];
-        var equipped = p.technique === id;
-        return '<div class="tech-card' + (equipped ? ' equipped' : '') + '">' +
-          '<span class="tech-glyph">' + esc(t.glyph) + '</span>' +
-          '<div class="tech-body"><div class="tech-top"><b>' + esc(t.name) + '</b><span class="rarity r' + t.rarity + '">' + rarityName(t.rarity) + '</span>' + (equipped ? '<span class="badge badge-gold">修习中</span>' : '') + '</div>' +
-          '<p>' + esc(t.desc) + '</p>' +
-          '<div class="tech-meta"><span>修炼 +' + pct(t.cult) + '%</span>' + (modsText(t.mods) ? '<span>' + esc(modsText(t.mods)) + '</span>' : '') + '<span>术法「' + esc(sk.name) + '」</span></div></div>' +
-          (equipped ? '<span class="equipped-mark">' + icon('check') + '</span>' : '<button class="btn btn-ghost btn-sm" data-action="equip-tech" data-id="' + id + '">修习</button>') +
-          '</div>';
-      }).join('');
-      body = '<section class="panel"><div class="panel-head"><div><p class="eyebrow">法门</p><h3>已悟功法</h3></div><span class="badge">' + p.learned.length + ' 门</span></div>' +
-        '<p class="panel-text">同一时间只能修习一门功法，但所学皆在。坊市中常有前人遗落的法门出售。</p>' +
-        '<div class="tech-list">' + learned + '</div></section>';
-    } else if (UI.charTab === 'achievements') {
-      var unlocked = Object.keys(s.achievements).length;
-      body = '<section class="panel"><div class="panel-head"><div><p class="eyebrow">道途</p><h3>成就</h3></div><span class="badge badge-gold">' + unlocked + ' / ' + D.ACHIEVEMENTS.length + '</span></div>' +
-        '<p class="panel-text">这些不是终点，只是路上留下的记号。</p>' +
-        '<div class="ach-grid">' + D.ACHIEVEMENTS.map(function (a) {
-          var on = !!s.achievements[a.id];
-          return '<div class="ach-card' + (on ? ' on' : '') + '"><span class="ach-mark">' + (on ? icon('check') : '·') + '</span><div><b>' + esc(a.name) + '</b><p>' + esc(a.desc) + '</p>' + (on ? '<small class="ach-reward">已达成</small>' : '<small>未达成</small>') + '</div></div>';
-        }).join('') + '</div></section>';
-    } else {
-      body = '<section class="panel"><div class="panel-head"><div><p class="eyebrow">行迹</p><h3>见闻录</h3></div><span class="badge">' + s.journal.length + ' 条</span></div>' +
-        renderLog(80, true) + '</section>';
-    }
-
-    return '<div class="screen">' + screenHead('此身 · 此心', '人物', '修行先修心，知己方能知天地。', '人') + tabBar + body + '</div>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 行囊                                                                */
-  /* ------------------------------------------------------------------ */
-
-  function renderInventory() {
-    var s = UI.state;
-    var p = s.player;
-    var tabs = '<div class="tabs">' +
-      '<button class="' + (UI.invTab === 'items' ? 'on' : '') + '" data-action="inv-tab" data-tab="items">物品</button>' +
-      '<button class="' + (UI.invTab === 'alchemy' ? 'on' : '') + '" data-action="inv-tab" data-tab="alchemy">炼丹</button>' +
-      '</div>';
-
-    if (UI.invTab === 'alchemy') {
-      var recipes = D.RECIPES.map(function (r) {
-        var missing = false;
-        var mats = Object.keys(r.mats).map(function (id) {
-          var have = E.countItem(s, id);
-          if (have < r.mats[id]) missing = true;
-          return '<span class="' + (have >= r.mats[id] ? 'have' : 'lack') + '">' + esc(D.ITEMS[id].name) + ' ' + have + '/' + r.mats[id] + '</span>';
-        }).join('');
-        return '<div class="recipe-card' + (missing ? ' missing' : '') + '">' +
-          '<div class="recipe-top"><div><b>' + esc(r.name) + '</b><small>' + esc(r.desc) + '</small></div><span class="chance-chip">成功率 ' + pct(E.craftChance(s, r)) + '%</span></div>' +
-          '<div class="recipe-mats">' + mats + '</div>' +
-          '<div class="recipe-foot"><span>耗时 1 月 · 失败会炸炉</span><button class="btn btn-ghost btn-sm" data-action="craft" data-id="' + r.id + '" ' + (missing ? 'disabled' : '') + '>开炉炼丹</button></div>' +
-          '</div>';
-      }).join('');
-      return '<div class="screen">' + screenHead('丹炉 · 火候', '炼丹', '药有君臣佐使，火有文武先后。', '丹') + tabs +
-        '<section class="panel"><div class="panel-head"><div><p class="eyebrow">丹方</p><h3>炉中乾坤</h3></div><span class="badge">' + s.stats.crafts + ' 炉已成</span></div>' +
-        '<p class="panel-text">材料多从历练中得来。悟性越高、火灵根越纯，成丹率越高。</p>' +
-        '<div class="recipe-list">' + recipes + '</div></section></div>';
-    }
-
-    var filters = [['all', '全部'], ['pill', '丹药'], ['material', '材料'], ['equip', '装备']];
-    var filterBar = '<div class="filter-row">' + filters.map(function (f) {
-      return '<button class="filter-chip' + (UI.invFilter === f[0] ? ' on' : '') + '" data-action="inv-filter" data-filter="' + f[0] + '">' + f[1] + '</button>';
-    }).join('') + '</div>';
-
-    var slots = [['weapon', '兵器'], ['armor', '护身'], ['accessory', '灵饰']];
-    var equipped = '<div class="equipped-row">' + slots.map(function (sl) {
-      var id = p.equipment[sl[0]];
-      if (!id) return '<div class="equipped-mini empty"><span>' + sl[1] + '</span><b>空</b></div>';
-      var item = D.ITEMS[id];
-      return '<div class="equipped-mini r' + item.rarity + '"><span>' + sl[1] + '</span><b>' + esc(item.name) + '</b><button class="text-btn" data-action="unequip" data-slot="' + sl[0] + '">取下</button></div>';
-    }).join('') + '</div>';
-
-    var items = p.inventory.filter(function (entry) {
-      if (UI.invFilter === 'all') return true;
-      var it = D.ITEMS[entry.id];
-      return it && it.type === UI.invFilter;
-    });
-
-    items.sort(function (a, b) {
-      var ia = D.ITEMS[a.id], ib = D.ITEMS[b.id];
-      if (ia.type !== ib.type) return ia.type.localeCompare(ib.type);
-      return ib.rarity - ia.rarity;
-    });
-
-    var itemList = items.length ? items.map(function (entry, idx) {
-      var it = D.ITEMS[entry.id];
-      if (!it) return '';
-      var actions = '';
-      if (it.type === 'pill') actions += '<button class="btn btn-primary btn-xs" data-action="use-item" data-id="' + it.id + '">服用</button>';
-      if (it.type === 'equip') actions += '<button class="btn btn-primary btn-xs" data-action="equip-item" data-id="' + it.id + '">装备</button>';
-      actions += '<button class="btn btn-ghost btn-xs" data-action="sell-item" data-id="' + it.id + '">出售 ' + fmt(E.sellPrice(s, it)) + '</button>';
-      return '<div class="item-card r' + it.rarity + '">' +
-        '<span class="item-glyph">' + esc(it.glyph) + '</span>' +
-        '<div class="item-body"><div class="item-top"><b>' + esc(it.name) + '</b><span class="rarity r' + it.rarity + '">' + rarityName(it.rarity) + '</span><span class="qty">×' + entry.qty + '</span></div>' +
-        '<p>' + esc(it.desc || '') + '</p>' +
-        (it.mods ? '<small class="mods-line">' + esc(modsText(it.mods)) + '</small>' : '') +
-        '<div class="item-actions">' + actions + '</div></div></div>';
-    }).join('') : '<div class="empty-state">行囊空空。去山里走走吧。<br><button class="btn btn-ghost btn-sm" data-action="nav" data-screen="explore">前往历练</button></div>';
-
-    return '<div class="screen">' + screenHead('行囊 · 器物', '行囊', '一饮一啄，皆是机缘。', '囊') + tabs +
-      '<section class="panel"><div class="panel-head"><div><p class="eyebrow">随身</p><h3>已装备</h3></div></div>' + equipped + '</section>' +
-      '<section class="panel"><div class="panel-head"><div><p class="eyebrow">百物</p><h3>行囊</h3></div><span class="badge">' + p.inventory.length + ' 种</span></div>' +
-      filterBar + '<div class="item-list">' + itemList + '</div></section></div>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 坊市                                                                */
-  /* ------------------------------------------------------------------ */
-
-  function renderMarket() {
-    var s = UI.state;
-    var p = s.player;
-    E.ensureMarket(s);
-    var refreshCost = Math.round(30 * Math.pow(1.6, p.realm));
-    var stock = s.world.stock.map(function (entry, idx) {
-      var isTech = entry.kind === 'tech';
-      var it = isTech ? D.TECHNIQUES[entry.itemId] : D.ITEMS[entry.itemId];
-      if (!it) return '';
-      var rarity = it.rarity || 0;
-      var kindLabel = isTech ? '功法' : (it.type === 'pill' ? '丹药' : it.type === 'equip' ? '法器' : '材料');
-      var desc = isTech ? it.desc : it.desc;
-      var sub = isTech ? '修炼 +' + pct(it.cult) + '%' : (it.mods ? modsText(it.mods) : '');
-      return '<div class="market-card r' + rarity + (entry.sold ? ' sold' : '') + '">' +
-        '<span class="item-glyph">' + esc(it.glyph) + '</span>' +
-        '<div class="market-body"><div class="item-top"><b>' + esc(it.name) + '</b><span class="rarity r' + rarity + '">' + rarityName(rarity) + '</span><span class="kind-chip">' + kindLabel + '</span></div>' +
-        '<p>' + esc(desc || '') + '</p>' +
-        (sub ? '<small class="mods-line">' + esc(sub) + '</small>' : '') +
-        '</div>' +
-        '<div class="market-buy"><span class="price">' + icon('coin') + fmt(entry.price) + '</span>' +
-        (entry.sold ? '<span class="sold-mark">已售出</span>' : '<button class="btn btn-primary btn-xs" data-action="buy" data-index="' + idx + '">购入</button>') + '</div>' +
-        '</div>';
+    var roots = Object.keys(D.ROOTS).map(function (k) {
+      var r = D.ROOTS[k];
+      return '<button class="root-card ' + (UI.create.root === k ? 'active' : '') + '" data-action="choose-root" data-value="' + k + '" style="--root:' + r.color + '">' +
+        '<span class="choice-glyph">' + h(r.glyph) + '</span><b>' + h(r.name) + '</b><small>' + h(r.desc) + '</small></button>';
     }).join('');
-
-    return '<div class="screen">' + screenHead('坊市 · 交易', '坊市', '人来人往，买的是货，卖的是命。', '市') +
-      '<section class="panel market-head"><div><p class="eyebrow">山脚坊市</p><h3>今日货架</h3><p class="panel-text">每过三月自动换一批货。价格随境界水涨船高，卖价约为售价的三成五。</p></div>' +
-      '<div class="market-actions"><span class="stone-balance">' + icon('coin') + '<b>' + fmt(p.stones) + '</b> 灵石</span>' +
-      '<button class="btn btn-ghost btn-sm" data-action="refresh-market">刷新货架 · ' + fmt(refreshCost) + ' 灵石</button></div></section>' +
-      '<div class="market-list">' + stock + '</div>' +
-      '<section class="panel market-foot"><p class="panel-text">想出售行囊中的材料与旧物？回到行囊，每件物品下方都有出售按钮。</p>' +
-      '<button class="btn btn-ghost btn-sm" data-action="nav" data-screen="inventory">打开行囊</button></section></div>';
+    app.innerHTML = '<div class="creation">' +
+      '<div class="creation-panel panel">' +
+      '<div class="creation-head"><div><p class="eyebrow">BEGIN A NEW SECT</p><h2>重立山门</h2><p>青崖山很大，先给山门起个名字。</p></div><button class="btn btn-ghost btn-sm" data-action="back-landing">返回</button></div>' +
+      '<div class="form-row"><label>宗门名</label><input id="sect-name" maxlength="10" value="' + h(UI.create.sectName) + '"></div>' +
+      '<div class="form-row"><label>掌门名</label><input id="player-name" maxlength="8" value="' + h(UI.create.playerName) + '"></div>' +
+      '<div class="form-block"><div class="form-label"><span>出身</span><small>影响开局资源与一点天赋</small></div><div class="choice-grid">' + origins + '</div></div>' +
+      '<div class="form-block"><div class="form-label"><span>灵根</span><small>影响修行速度与擅长之事</small></div><div class="root-grid">' + roots + '</div></div>' +
+      '<div class="creation-tip">' + seal('记') + '<p>外门弟子负责劳作，内门弟子专注修炼。开局有三名外门弟子，分别照看灵田、药圃与膳堂；掌门已在静室闭关。先让山门转起来，再谈长生。</p></div>' +
+      '<div class="creation-actions"><button class="btn btn-primary btn-lg" data-action="start-game">立下山门</button><button class="btn btn-ghost" data-action="help">先看玩法</button></div>' +
+      '</div></div>';
   }
 
-  /* ------------------------------------------------------------------ */
-  /* 日志                                                                */
-  /* ------------------------------------------------------------------ */
-
-  function renderLog(limit, full) {
-    var s = UI.state;
-    var entries = s.journal.slice(0, limit || 5);
-    if (!entries.length) return '<div class="empty-state">尚无记载。</div>';
-    return '<div class="log' + (full ? ' log-full' : '') + '">' + entries.map(function (e) {
-      return '<div class="log-item log-' + esc(e.type) + '"><div class="log-date">' + esc(e.date) + '</div><p>' + esc(e.text) + '</p></div>';
-    }).join('') + '</div>';
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 主渲染                                                              */
-  /* ------------------------------------------------------------------ */
-
-  function renderGame() {
-    var s = UI.state;
-    if (s.ended) UI.screen = 'cultivate';
-    var endedBanner = s.ended ? '<div class="ended-banner"><span>' + (s.ended === 'ascended' ? '此世已羽化飞升。' : '此世已尽，尘缘已了。') + '</span><button class="btn btn-primary btn-sm" data-action="show-ending">回望此生</button><button class="btn btn-ghost btn-sm" data-action="reincarnate">转世重修</button></div>' : '';
-    return '<div class="game">' + renderTopbar() + endedBanner +
-      '<div class="shell">' + renderCharacterPanel() +
-      '<main id="screen">' + renderScreen() + '</main></div>' +
-      renderBottomNav() + '</div>';
-  }
-
-  function renderScreen() {
-    if (UI.state.ended) return renderEndedScreen();
-    if (UI.screen === 'explore') return renderExplore();
-    if (UI.screen === 'character') return renderCharacter();
-    if (UI.screen === 'inventory') return renderInventory();
-    if (UI.screen === 'market') return renderMarket();
-    return renderCultivate();
-  }
-
-  UI.render = function () {
-    if (UI.creation) {
-      app.innerHTML = renderCreation();
-      document.body.classList.add('is-landing');
-    } else if (UI.state) {
-      app.innerHTML = renderGame();
-      document.body.classList.remove('is-landing');
-      document.title = (D.UI.nav.find(function (n) { return n.id === UI.screen; }) || { label: '' }).label + ' · 一念长生';
-    } else {
-      app.innerHTML = renderLanding();
-      document.body.classList.add('is-landing');
-      document.title = '一念长生 · 文字修仙';
-    }
-    UI.renderModal();
-  };
-
-  UI.renderModal = function () { /* 由下方实现覆盖 */ };
-
-  UI.showLanding = function () {
-    UI.clearToasts();
-    UI.state = null;
-    UI.creation = null;
-    UI.modal = null;
-    UI.screen = 'cultivate';
-    UI.render();
-  };
-
-  UI.persist = function (before) {
-    if (!UI.state) return;
-    var snapshot = before || Object.assign({}, UI.state.achievements);
-    E.checkAchievements(UI.state);
-    if (!E.save(UI.state)) UI.toast('存档失败：浏览器可能禁用了本地存储。', 'danger');
-    UI.notifyAchievements(snapshot);
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* 弹窗基础                                                            */
-  /* ------------------------------------------------------------------ */
-
-  function modalHead(kicker, title, closable, extra) {
-    return '<header class="modal-head"><div><p class="eyebrow">' + esc(kicker || '') + '</p><h2>' + esc(title) + '</h2></div>' +
-      '<div class="modal-head-side">' + (extra || '') + (closable ? '<button class="icon-btn" data-action="close-modal" aria-label="关闭">' + icon('close') + '</button>' : '') + '</div></header>';
-  }
-
-  function modalFrame(cls, inner, opts) {
-    opts = opts || {};
-    return '<div class="modal-root">' +
-      '<div class="modal-backdrop"' + (opts.closable ? ' data-action="close-modal"' : '') + '></div>' +
-      '<div class="modal ' + (cls || '') + '" role="dialog" aria-modal="true" aria-label="' + esc(opts.label || '对话框') + '">' + inner + '</div>' +
-      '</div>';
-  }
-
-  function statLabel(k) {
-    return ({ comp: '悟性', sense: '神识', luck: '气运' })[k] || k;
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 事件弹窗                                                            */
-  /* ------------------------------------------------------------------ */
-
-  function renderEventModal(m) {
-    var s = UI.state;
-    var ev = m.event;
-    var region = m.region || {};
-    var choices = ev.choices.map(function (c, i) {
-      var avail = E.choiceAvailability(s, c);
-      var chanceText = c.check ? statLabel(c.check.stat) + '检定 · ' + pct(E.checkChance(s, c.check)) + '%' : '';
-      var hint = c.hint || '';
-      return '<button class="choice" data-action="choose" data-index="' + i + '"' + (avail.ok ? '' : ' disabled') + '>' +
-        '<span class="choice-main"><b>' + esc(c.label) + '</b>' +
-        (hint ? '<small>' + esc(hint) + '</small>' : '') +
-        (avail.ok ? '' : '<small class="choice-req">' + esc(avail.reason) + '</small>') +
-        '</span>' +
-        (chanceText ? '<span class="chance-chip">' + chanceText + '</span>' : '') +
-        '<span class="choice-arrow">' + icon('arrow') + '</span>' +
-        '</button>';
-    }).join('');
-
-    return modalFrame('event-modal', modalHead('奇遇 · ' + (region.name || '山野'), ev.name, true,
-      '<span class="danger-chip">' + dangerDots(region.danger || 1) + '</span>') +
-      '<div class="modal-body">' +
-      '<p class="event-text">' + esc(ev.text) + '</p>' +
-      '<div class="choice-list">' + choices + '</div>' +
-      '<p class="modal-note">每一次选择都会留下痕迹。</p>' +
-      '</div>', { closable: true, label: ev.name });
-  }
-
-  function renderEventResultModal(m) {
-    var res = m.result;
-    var checked = '';
-    if (res.checked) {
-      checked = '<span class="check-result ' + (res.success ? 'ok' : 'bad') + '">' + (res.success ? '检定成功' : '检定失败') + ' · ' + pct(res.chance) + '%</span>';
-    }
-    var gains = (res.gains && res.gains.length)
-      ? '<div class="gains">' + res.gains.map(function (g) { return '<span class="gain-chip">' + esc(g) + '</span>'; }).join('') + '</div>'
-      : '';
-    var action = res.combat
-      ? '<button class="btn btn-primary btn-wide" data-action="to-battle">' + icon('sword') + '拔剑迎战</button>'
-      : '<button class="btn btn-primary btn-wide" data-action="close-modal">继续前行</button>';
-    return modalFrame('result-modal', modalHead('奇遇 · ' + (m.region && m.region.name ? m.region.name : '山野'), m.event.name, false, checked) +
-      '<div class="modal-body">' +
-      '<p class="event-text result-text">' + esc(res.text || '风过林梢，什么也没有发生。') + '</p>' +
-      gains +
-      '<div class="modal-actions">' + action + '</div>' +
-      '</div>', { label: m.event.name });
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 战斗弹窗                                                            */
-  /* ------------------------------------------------------------------ */
-
-  function renderBattleModal() {
-    var s = UI.state;
-    var b = s.battle;
-    if (!b) return '';
-    var d = E.derived(s);
-    var e = b.enemy;
-    var hpPct = pct(e.hp / e.hpMax);
-    var isOver = b.over;
-    var title = e.tribulation ? '九霄雷劫' : (e.elite ? '强敌当前' : '狭路相逢');
-    var kicker = e.tribulation ? '渡劫 · 天门之前' : '战斗 · ' + (D.REGIONS.find(function (r) { return r.id === b.regionId; }) || { name: '山野' }).name;
-
-    var log = b.log.slice(-14).map(function (l) {
-      return '<p class="battle-log-line ' + esc(l.type) + '">' + esc(l.text) + '</p>';
-    }).join('');
-
-    var actions = '';
-    if (!isOver) {
-      var skill = d.skill;
-      var canSkill = skill && s.player.mp >= skill.cost;
-      actions = '<div class="battle-actions">' +
-        '<button class="battle-btn" data-action="battle-act" data-act="attack">' + icon('sword') + '<span><b>普通攻击</b><small>不耗灵力</small></span></button>' +
-        (skill ? '<button class="battle-btn" data-action="battle-act" data-act="skill" ' + (canSkill ? '' : 'disabled') + '>' + icon('spark') + '<span><b>' + esc(skill.name) + '</b><small>灵力 ' + skill.cost + (canSkill ? '' : ' · 不足') + '</small></span></button>' :
-          '<button class="battle-btn" disabled>' + icon('spark') + '<span><b>术法</b><small>未习得</small></span></button>') +
-        '<button class="battle-btn" data-action="battle-pill-menu">' + icon('heart') + '<span><b>服丹</b><small>恢复气血 / 灵力</small></span></button>' +
-        '<button class="battle-btn danger" data-action="battle-act" data-act="flee">' + icon('arrow') + '<span><b>遁走</b><small>并非每次都能脱身</small></span></button>' +
-        '</div>';
-      if (UI.battlePillOpen) {
-        var pills = s.player.inventory.filter(function (entry) {
-          var it = D.ITEMS[entry.id];
-          return it && it.type === 'pill' && ['heal', 'fullHeal', 'mana'].indexOf(it.effect.type) !== -1;
-        });
-        actions += '<div class="battle-pill-panel"><div class="battle-pill-title">选择丹药</div>' +
-          (pills.length ? pills.map(function (entry) {
-            var it = D.ITEMS[entry.id];
-            return '<button class="battle-pill" data-action="battle-pill" data-id="' + it.id + '">' + esc(it.glyph) + ' <b>' + esc(it.name) + '</b><span>×' + entry.qty + '</span></button>';
-          }).join('') : '<p class="modal-note">行囊中没有可在战斗中服用的丹药。</p>') +
-          '<button class="text-btn" data-action="battle-pill-close">收起</button></div>';
-      }
-    } else {
-      var rewardHtml = '';
-      if (b.result === 'win' && b.rewards) {
-        rewardHtml = '<div class="gains">' +
-          '<span class="gain-chip">修为 +' + fmt(b.rewards.exp) + '</span>' +
-          '<span class="gain-chip">灵石 +' + fmt(b.rewards.stones) + '</span>' +
-          (b.rewards.drops || []).map(function (x) { return '<span class="gain-chip">' + esc(x.name) + ' ×' + x.qty + '</span>'; }).join('') +
-          '</div>';
-      } else if (b.result === 'lose' && b.rewards) {
-        rewardHtml = '<div class="gains">' +
-          '<span class="gain-chip loss">修为 -' + fmt(b.rewards.lostExp) + '</span>' +
-          '<span class="gain-chip loss">灵石 -' + fmt(b.rewards.lostStones) + '</span>' +
-          '</div>';
-      } else if (b.result === 'ascension') {
-        rewardHtml = '<p class="ascend-line">九霄雷散，天门洞开。</p>';
-      }
-      var resultLabel = b.result === 'win' ? '胜' : b.result === 'lose' ? '败' : b.result === 'flee' ? '遁' : '仙';
-      var resultTitle = b.result === 'win' ? '尘埃落定' : b.result === 'lose' ? '败退' : b.result === 'flee' ? '脱身' : '羽化飞升';
-      actions = '<div class="battle-result">' +
-        '<div class="result-seal ' + esc(b.result) + '">' + resultLabel + '</div>' +
-        '<h3>' + resultTitle + '</h3>' + rewardHtml +
-        '<button class="btn btn-primary btn-wide" data-action="close-battle">' + (b.result === 'ascension' ? '迎接天门' : '收功') + '</button>' +
-        '</div>';
-    }
-
-    return modalFrame('battle-modal', modalHead(kicker, title, false,
-      '<span class="battle-turn">第 ' + b.turn + ' 回合</span>') +
-      '<div class="modal-body battle-body">' +
-      '<div class="enemy-plate">' +
-      '<div class="enemy-id"><span class="enemy-glyph">' + esc(e.glyph) + '</span><div><b>' + esc(e.name) + '</b><p>' + esc(e.desc) + '</p></div></div>' +
-      '<div class="bar-row"><div class="bar-label"><span>敌方气血</span><span>' + fmt(e.hp) + ' / ' + fmt(e.hpMax) + '</span></div><div class="bar enemy" role="progressbar" aria-valuenow="' + hpPct + '" aria-valuemin="0" aria-valuemax="100"><i style="width:' + hpPct + '%"></i></div></div>' +
-      '</div>' +
-      '<div class="battle-stage"><div class="battle-log" id="battle-log">' + log + '</div></div>' +
-      '<div class="battle-player">' +
-      '<div class="battle-vitals">' + barRow('气血', s.player.hp, d.hpMax, 'hp') + barRow('灵力', s.player.mp, d.mpMax, 'mp') + '</div>' +
-      '<div class="battle-numbers"><span>攻 ' + fmt(d.atk) + '</span><span>防 ' + fmt(d.def) + '</span><span>暴击 ' + pct(d.crit) + '%</span>' + (b.shield > 0 ? '<span class="shield">护体 ' + fmt(b.shield) + '</span>' : '') + '</div>' +
-      '</div>' +
-      actions +
-      '</div>', { label: '战斗' });
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 结果 / 结局 / 设置 / 确认 / 引导                                    */
-  /* ------------------------------------------------------------------ */
-
-  function renderResultModal(m) {
-    var tone = m.tone || 'info';
-    var checked = m.chance != null ? '<span class="check-result ' + (m.success ? 'ok' : 'bad') + '">成功率 ' + pct(m.chance) + '%</span>' : '';
-    var next = m.next === 'battle'
-      ? '<button class="btn btn-primary btn-wide" data-action="to-battle">' + icon('sword') + '迎接天劫</button>'
-      : '<button class="btn btn-primary btn-wide" data-action="close-modal">继续</button>';
-    return modalFrame('result-modal', modalHead(m.kicker || '修行', m.title || '结果', false, checked) +
-      '<div class="modal-body"><p class="event-text result-text ' + esc(tone) + '">' + esc(m.text || '') + '</p>' +
-      (m.detail ? '<p class="modal-note">' + esc(m.detail) + '</p>' : '') +
-      '<div class="modal-actions">' + next + '</div></div>', { label: m.title || '结果' });
-  }
-
-  function renderEndingModal() {
-    var s = UI.state;
-    var p = s.player;
-    var ascended = s.ended === 'ascended';
-    var meta = E.getMeta();
-    var achCount = Object.keys(s.achievements).length;
-    var title = ascended ? '羽化飞升' : '坐化';
-    var kicker = ascended ? '此世 · 圆满' : '此世 · 终章';
-    var text = ascended
-      ? '你踏碎最后一道天雷，衣袂在云海之上猎猎作响。回望人间，山河如芥，故人如尘。长生路已至尽头，又或者，只是另一段路的开始。'
-      : '你在蒲团上缓缓闭上眼。这一世，你见过山雨、妖火、故人的笑，也见过自己的怯懦与不甘。修行一场，终究没能走到最后。';
-    var quote = ascended ? '「一朝得道，万古长青。」' : '「大道无情，生死一梦。」';
-    return modalFrame('ending-modal ' + (ascended ? 'ascended' : 'death'),
-      '<div class="ending-inner">' +
-      '<div class="ending-seal">' + (ascended ? '仙' : '寂') + '</div>' +
-      '<p class="eyebrow">' + kicker + '</p>' +
-      '<h2>' + title + '</h2>' +
-      '<p class="ending-text">' + text + '</p>' +
-      '<p class="ending-quote">' + quote + '</p>' +
-      '<div class="ending-stats">' +
-      '<div><span>道号</span><b>' + esc(p.name) + '</b></div>' +
-      '<div><span>境界</span><b>' + esc(E.stageInfo(s).name) + '</b></div>' +
-      '<div><span>享年</span><b>' + E.age(s) + ' 岁</b></div>' +
-      '<div><span>历练</span><b>' + s.stats.explorations + ' 次</b></div>' +
-      '<div><span>胜战</span><b>' + s.stats.wins + ' 场</b></div>' +
-      '<div><span>成就</span><b>' + achCount + ' / ' + D.ACHIEVEMENTS.length + '</b></div>' +
-      '</div>' +
-      (ascended ? '<p class="legacy-note">轮回印记 +1 · 累计飞升 ' + meta.ascensions + ' 次</p>' : '') +
-      '<div class="ending-actions">' +
-      '<button class="btn btn-primary" data-action="reincarnate">转世重修</button>' +
-      '<button class="btn btn-ghost" data-action="ending-close">回望此生</button>' +
-      '</div></div>', { label: title });
-  }
-
-  function renderSettingsModal() {
-    var s = UI.state;
-    var exportData = '';
-    if (s) {
-      try { exportData = JSON.stringify(s, null, 2); } catch (e) { exportData = ''; }
-    }
-    return modalFrame('settings-modal', modalHead('洞府 · 杂务', '设置', true) +
-      '<div class="modal-body">' +
-      '<div class="setting-row"><div><b>界面主题</b><small>夜墨沉静，宣纸温和。</small></div><div class="segmented">' +
-      '<button class="' + (UI.settings.theme === 'night' ? 'on' : '') + '" data-action="theme" data-value="night">夜墨</button>' +
-      '<button class="' + (UI.settings.theme === 'paper' ? 'on' : '') + '" data-action="theme" data-value="paper">宣纸</button>' +
-      '</div></div>' +
-      '<div class="setting-row"><div><b>动画效果</b><small>关闭后减少移动与过渡。</small></div><button class="switch ' + (UI.settings.motion ? 'on' : '') + '" data-action="toggle-motion" role="switch" aria-checked="' + UI.settings.motion + '"><i></i></button></div>' +
-      '<div class="setting-row"><div><b>自动使用破境丹</b><small>仅在冲关前可手动更改。</small></div><button class="switch ' + (UI.settings.usePill ? 'on' : '') + '" data-action="toggle-pill" role="switch" aria-checked="' + UI.settings.usePill + '"><i></i></button></div>' +
-      '<div class="settings-divider"></div>' +
-      (s ? '<div class="save-block"><div class="panel-head"><div><b>存档</b><small>保存在当前浏览器中，换设备请复制下方内容。</small></div><button class="text-btn" data-action="copy-save">复制存档</button></div>' +
-        '<textarea class="save-area" id="save-data" readonly>' + esc(exportData) + '</textarea></div>' +
-        '<div class="save-block"><b>导入存档</b><textarea class="save-area" id="import-data" placeholder="粘贴存档 JSON 后点击导入"></textarea>' +
-        '<div class="modal-actions inline"><button class="btn btn-ghost btn-sm" data-action="import-save">导入存档</button>' +
-        '<button class="btn btn-danger-ghost btn-sm" data-action="restart">重新开始</button></div></div>' :
-        '<p class="modal-note">尚未开始游戏。</p>') +
-      '<div class="settings-divider"></div>' +
-      '<div class="about-block"><b>关于</b><p class="modal-note">《一念长生》是一款原创文字修仙小游戏。玩法参考了开源项目 <a href="https://github.com/setube/vue-xiuxiangame" target="_blank" rel="noopener">vue-xiuxiangame</a> 与 <a href="https://github.com/JeasonLoop/react-xiuxian-game" target="_blank" rel="noopener">react-xiuxian-game</a> 的公开设计思路，文案、数值与代码均为本作原创。</p>' +
-      '<p class="modal-note">版本 ' + D.VERSION + '.0 · 本地存档 · 无内购</p></div>' +
-      '<div class="modal-actions"><button class="btn btn-ghost btn-sm" data-action="back-title">回到标题</button><button class="btn btn-primary btn-sm" data-action="close-modal">关闭</button></div>' +
-      '</div>', { closable: true, label: '设置' });
-  }
-
-  function renderConfirmModal(m) {
-    return modalFrame('confirm-modal', modalHead('确认', m.title || '确认', false) +
-      '<div class="modal-body"><p class="event-text">' + esc(m.text || '') + '</p>' +
-      '<div class="modal-actions"><button class="btn btn-primary" data-action="confirm" data-confirm="' + esc(m.confirmAction) + '">' + esc(m.confirmLabel || '确认') + '</button>' +
-      '<button class="btn btn-ghost" data-action="close-modal">再想想</button></div></div>', { label: m.title || '确认' });
-  }
-
-  function renderIntroModal() {
-    var s = UI.state;
-    var root = D.ROOTS[s.player.root];
-    return modalFrame('intro-modal', modalHead('仙途 · 开篇', '你醒了', false) +
-      '<div class="modal-body">' +
-      '<p class="event-text">你叫' + esc(s.player.name) + '，今年十六岁。测灵碑上亮起「' + esc(root.name) + '」的光，老道人说，你有仙缘。</p>' +
-      '<div class="intro-tips">' +
-      '<div><span>一</span><p><b>打坐</b>积累修为。修为满后，在修炼页冲关突破。</p></div>' +
-      '<div><span>二</span><p><b>历练</b>能得灵石、丹药与功法，也会遇见妖物。打不过就跑。</p></div>' +
-      '<div><span>三</span><p><b>坊市</b>里可买法器丹药，<b>行囊</b>里能炼丹、卖材料。</p></div>' +
-      '</div>' +
-      '<p class="modal-note">从炼气一层到羽化飞升，这条路很长。慢慢走。</p>' +
-      '<div class="modal-actions"><button class="btn btn-primary btn-wide" data-action="close-modal">开始修行</button></div>' +
-      '</div>', { label: '开篇' });
-  }
-
-  UI.renderModal = function () {
-    if (!UI.modal) {
-      modalRoot.innerHTML = '';
-      if (app) app.inert = false;
-      document.body.classList.remove('modal-open');
-      return;
-    }
-    var m = UI.modal;
-    var html = '';
-    if (m.type === 'event') html = renderEventModal(m);
-    else if (m.type === 'event-result') html = renderEventResultModal(m);
-    else if (m.type === 'battle') html = renderBattleModal();
-    else if (m.type === 'result') html = renderResultModal(m);
-    else if (m.type === 'ending') html = renderEndingModal();
-    else if (m.type === 'settings') html = renderSettingsModal();
-    else if (m.type === 'confirm') html = renderConfirmModal(m);
-    else if (m.type === 'intro') html = renderIntroModal();
-    modalRoot.innerHTML = html;
-    if (app) app.inert = !!html;
-    document.body.classList.toggle('modal-open', !!html);
-    var logEl = document.getElementById('battle-log');
-    if (logEl) logEl.scrollTop = logEl.scrollHeight;
-    if (html && m.type !== 'battle') {
-      var focusTarget = m.type === 'event' ? modalRoot.querySelector('.choice:not(:disabled)') : null;
-      if (!focusTarget) focusTarget = modalRoot.querySelector('.modal-head button');
-      if (!focusTarget) focusTarget = modalRoot.querySelector('.btn:not(:disabled)');
-      if (focusTarget) {
-        setTimeout(function () {
-          try { focusTarget.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
-        }, 40);
-      }
-    }
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* 流程                                                                */
-  /* ------------------------------------------------------------------ */
-
-  function enterGame(state, showIntro) {
-    UI.clearToasts();
-    UI.state = state;
-    UI.creation = null;
-    UI.screen = 'cultivate';
-    UI.charTab = 'stats';
-    UI.invTab = 'items';
-    UI.battlePillOpen = false;
-    if (showIntro) UI.modal = { type: 'intro' };
-    else if (state.battle) UI.modal = { type: 'battle' };
-    else if (state.ended) UI.modal = { type: 'ending' };
-    else UI.modal = null;
-    UI.render();
-  }
-
-  function startCreation() {
-    UI.clearToasts();
-    UI.state = null;
-    UI.creation = UI.newCreation();
-    UI.modal = null;
-    UI.screen = 'cultivate';
-    UI.render();
-    window.scrollTo(0, 0);
+  function captureCreateFields() {
+    var sn = document.getElementById('sect-name');
+    var pn = document.getElementById('player-name');
+    if (sn) UI.create.sectName = sn.value.trim() || '青崖宗';
+    if (pn) UI.create.playerName = pn.value.trim() || '沈未央';
   }
 
   function startGame() {
-    var c = UI.creation;
-    var name = (c.name || '').trim();
-    if (!name) { UI.toast('给自己取一个道号吧。', 'danger'); return; }
-    c.name = name;
-    var s = E.newGame(c);
-    E.save(s);
-    enterGame(s, true);
-    window.scrollTo(0, 0);
+    captureCreateFields();
+    var sectName = UI.create.sectName;
+    var playerName = UI.create.playerName;
+    UI.game = E.newGame({
+      sectName: sectName || '青崖宗',
+      playerName: playerName || '沈未央',
+      origin: UI.create.origin,
+      root: UI.create.root
+    });
+    UI.settings.speed = 1;
+    UI.speed = 1;
+    UI.tab = 'sect';
+    UI.filter = 'all';
+    UI.selectedBuilding = null;
+    UI.modalOpen = false;
+    UI.modalKey = '';
+    document.getElementById('app').innerHTML = shellHtml();
+    renderAll();
+    saveNow();
+    startTimer();
+    openIntro();
   }
 
-  function reincarnate() {
-    E.deleteSave();
-    startCreation();
+  function continueGame() {
+    var s = E.load();
+    if (!s) { toast('没有找到可用的存档。', 'warn'); renderLanding(); return; }
+    UI.game = s;
+    UI.tab = 'sect';
+    UI.modalOpen = false;
+    document.getElementById('app').innerHTML = shellHtml();
+    renderAll();
+    startTimer();
   }
 
   /* ------------------------------------------------------------------ */
-  /* 事件处理                                                            */
+  /* 主壳                                                               */
   /* ------------------------------------------------------------------ */
+  function shellHtml() {
+    return '<div class="game-shell">' +
+      '<div class="topbar-wrap" id="topbar-wrap"></div>' +
+      '<main class="game-main" id="game-main"><div id="view"></div></main>' +
+      '<nav class="bottom-nav" id="bottom-nav" aria-label="主导航"></nav>' +
+      '</div>';
+  }
 
-  function onAction(action, el) {
-    var s = UI.state;
-    switch (action) {
+  function renderHeader() {
+    if (!UI.game) return;
+    var st = stats();
+    var d = date(UI.game);
+    var w = weather();
+    var chips = [
+      { id: 'stones', val: UI.game.resources.stones },
+      { id: 'food', val: UI.game.resources.food, delta: signed(fmt1(E.dailyRates(UI.game).food - st.dailyFood)) + '/日' },
+      { id: 'wood', val: UI.game.resources.wood },
+      { id: 'stone', val: UI.game.resources.stone },
+      { id: 'herbs', val: UI.game.resources.herbs },
+      { id: 'insight', val: UI.game.insight, name: '悟道', glyph: '道', color: '#7b5f84' },
+      { id: 'renown', val: UI.game.resources.renown }
+    ];
+    var html = '<header class="topbar">' +
+      '<div class="brand"><button class="brand-seal" data-action="settings" aria-label="打开设置">念</button><div class="brand-text"><h1>' + h(D.TITLE) + '</h1><p>' + h(UI.game.sectName) + ' · ' + h(st.grade.name) + '</p></div></div>' +
+      '<div class="topbar-right">' +
+      '<div class="date-block"><span class="season-glyph" style="color:' + d.season.color + '">' + d.season.glyph + '</span><div><b>' + d.month + '月' + d.dayOfMonth + '日</b><small>青历 ' + d.year + ' 年 · ' + w.name + '</small></div></div>' +
+      '<div class="speed-control" role="group" aria-label="时间速度">' +
+      '<button class="speed-btn ' + (UI.paused ? 'active' : '') + '" data-action="pause" aria-label="暂停">Ⅱ</button>' +
+      '<button class="speed-btn ' + (!UI.paused && UI.speed === 1 ? 'active' : '') + '" data-action="speed" data-value="1">1×</button>' +
+      '<button class="speed-btn ' + (!UI.paused && UI.speed === 2 ? 'active' : '') + '" data-action="speed" data-value="2">2×</button>' +
+      '<button class="speed-btn ' + (!UI.paused && UI.speed === 4 ? 'active' : '') + '" data-action="speed" data-value="4">4×</button>' +
+      '</div>' +
+      '<div class="mobile-speed">' +
+      '<button class="icon-btn" data-action="pause" aria-label="' + (UI.paused ? '继续' : '暂停') + '">' + (UI.paused ? '▶' : 'Ⅱ') + '</button>' +
+      '<button class="icon-btn speed-cycle" data-action="speed-cycle" aria-label="切换速度">' + UI.speed + '×</button>' +
+      '</div>' +
+      '<button class="icon-btn alert-btn" data-action="alerts" aria-label="山门警讯">讯' + (E.alerts(UI.game).length ? '<i>' + E.alerts(UI.game).length + '</i>' : '') + '</button>' +
+      '<button class="icon-btn" data-action="settings" aria-label="设置">设</button>' +
+      '</div></header>' +
+      '<div class="resource-strip">' +
+      chips.map(function (c) {
+        var meta = c.id === 'insight' ? { name: c.name, glyph: c.glyph, color: c.color } : D.RESOURCES[c.id];
+        var label = meta ? meta.name : c.id;
+        var glyph = meta ? meta.glyph : '?';
+        var color = meta ? meta.color : '#7d7565';
+        var delta = '';
+        if (c.id === 'food') delta = '<small class="res-delta">' + c.delta + '</small>';
+        if (c.id === 'renown' && st.nextGrade) delta = '<small class="res-delta">→ ' + st.nextGrade.name + '</small>';
+        return '<button class="res-chip" data-action="nav" data-tab="' + (c.id === 'renown' ? 'sect' : c.id === 'insight' ? 'affairs' : 'market') + '" title="' + h(label) + '">' +
+          '<span class="res-glyph" style="--rc:' + color + '">' + h(glyph) + '</span><span class="res-main"><b>' + fmt(c.val) + '</b><small>' + h(label) + '</small></span>' + delta + '</button>';
+      }).join('') +
+      '</div>';
+    document.getElementById('topbar-wrap').innerHTML = html;
+  }
 
-      /* ---------- 标题与创建 ---------- */
-      case 'continue': {
-        var loaded = E.load();
-        if (!loaded) { UI.toast('存档读取失败，可能已损坏。', 'danger'); return; }
-        enterGame(loaded, false);
-        return;
-      }
-      case 'new-game': {
-        if (E.hasSave()) {
-          UI.modal = {
-            type: 'confirm', title: '重入轮回',
-            text: '开始新的一世会覆盖当前存档。旧存档中的一切都会散去，确定吗？',
-            confirmAction: 'new', confirmLabel: '开始新的一世'
-          };
-          UI.renderModal();
-        } else {
-          startCreation();
-        }
-        return;
-      }
-      case 'confirm': {
-        var which = el.dataset.confirm;
-        UI.modal = null;
-        if (which === 'restart') {
-          E.deleteSave();
-          startCreation();
-        } else if (which === 'new') {
-          startCreation();
-        }
-        return;
-      }
-      case 'select-origin': UI.creation.origin = el.dataset.value; UI.render(); return;
-      case 'select-root': UI.creation.root = el.dataset.value; UI.render(); return;
-      case 'select-daoheart': UI.creation.daoheart = el.dataset.value; UI.render(); return;
-      case 'random-name': UI.creation.name = E.randomName(); UI.render(); return;
-      case 'creation-next': {
-        if (UI.creation.step === 0 && !(UI.creation.name || '').trim()) {
-          UI.toast('先取一个道号吧。', 'danger'); return;
-        }
-        UI.creation.step = Math.min(2, UI.creation.step + 1);
-        UI.render(); window.scrollTo(0, 0); return;
-      }
-      case 'creation-back': {
-        if (UI.creation.step === 0) { UI.showLanding(); return; }
-        UI.creation.step -= 1;
-        UI.render(); window.scrollTo(0, 0); return;
-      }
-      case 'start-game': startGame(); return;
-      case 'reincarnate': reincarnate(); return;
+  function renderNav() {
+    var st = stats();
+    var badges = {
+      sect: (UI.game.pendingEvent ? 1 : 0) + (st.foodDays <= 3 ? 1 : 0),
+      disciples: E.aliveDisciples(UI.game).filter(function (d) { return d.exp >= E.expNeed(d) && d.realm < 9; }).length,
+      build: 0,
+      affairs: E.aliveDisciples(UI.game).filter(function (d) { return d.role === 'outer' && d.realm === 0 && d.layer >= 2; }).length,
+      market: 0
+    };
+    document.getElementById('bottom-nav').innerHTML = D.UI.nav.map(function (n) {
+      return '<button class="nav-btn ' + (UI.tab === n.id ? 'active' : '') + '" data-action="nav" data-tab="' + n.id + '" aria-label="' + n.label + '">' +
+        '<span class="nav-glyph">' + n.glyph + (badges[n.id] ? '<i>' + badges[n.id] + '</i>' : '') + '</span><span>' + n.label + '</span></button>';
+    }).join('');
+  }
 
-      /* ---------- 导航 ---------- */
-      case 'nav': {
-        if (!s) return;
-        UI.screen = el.dataset.screen || 'cultivate';
-        if (el.dataset.tab) UI.charTab = el.dataset.tab;
-        UI.modal = null;
-        UI.battlePillOpen = false;
-        UI.render();
-        window.scrollTo({ top: 0, behavior: UI.settings.motion ? 'smooth' : 'auto' });
-        return;
-      }
-      case 'char-tab': UI.charTab = el.dataset.tab; UI.render(); return;
-      case 'inv-tab': UI.invTab = el.dataset.tab; UI.render(); return;
-      case 'inv-filter': UI.invFilter = el.dataset.filter; UI.render(); return;
+  function renderAll() {
+    if (!UI.game) return;
+    renderHeader();
+    renderNav();
+    renderView();
+    syncAutoModals();
+  }
 
-      /* ---------- 修炼 ---------- */
-      case 'meditate': {
-        if (!s) return;
-        var beforeM = Object.assign({}, s.achievements);
-        var res = E.meditate(s);
-        if (!res.ok) { UI.toast(res.error, 'danger'); return; }
-        UI.modal = s.ended ? { type: 'ending' } : null;
-        UI.persist(beforeM);
-        UI.render();
-        UI.toast('修为 +' + fmt(res.gain), 'success');
-        if (res.special) UI.toast(esc(res.special), 'info');
-        if (!s.ended && s.player.exp >= E.expNeed(s)) UI.toast('修为已满，可尝试突破。', 'gold');
-        return;
-      }
-      case 'closed': {
-        if (!s) return;
-        var beforeC = Object.assign({}, s.achievements);
-        var rc = E.closedCultivation(s);
-        if (!rc.ok) { UI.toast(rc.error, 'danger'); return; }
-        UI.modal = s.ended ? { type: 'ending' } : null;
-        UI.persist(beforeC);
-        UI.render();
-        UI.toast('闭关结束 · 修为 +' + fmt(rc.gain), 'success');
-        if (rc.special) UI.toast(esc(rc.special), 'info');
-        return;
-      }
-      case 'toggle-pill': {
-        UI.settings.usePill = !UI.settings.usePill;
-        saveSettings();
-        UI.render();
-        return;
-      }
-      case 'breakthrough': {
-        if (!s) return;
-        var beforeB = Object.assign({}, s.achievements);
-        var rb = E.breakthrough(s, UI.settings.usePill);
-        if (!rb.ok) {
-          if (s.ended) { UI.persist(beforeB); UI.modal = { type: 'ending' }; UI.render(); }
-          else UI.toast(rb.error, 'danger');
-          return;
-        }
-        UI.persist(beforeB);
-        if (rb.tribulation) {
-          UI.modal = {
-            type: 'result', kicker: '渡劫 · 天门', title: '天劫将至',
-            text: rb.text, tone: 'gold', success: true, chance: rb.chance, next: 'battle',
-            detail: '渡过此劫，便可羽化飞升。若败，尚可卷土重来。'
-          };
-        } else {
-          UI.modal = {
-            type: 'result', kicker: '冲关', title: rb.success ? '破境成功' : '冲关失败',
-            text: rb.text, tone: rb.success ? 'success' : 'danger', success: rb.success, chance: rb.chance,
-            detail: rb.success ? '新的境界带来新的寿元与力量。' : '失败会留下心得，下次成功率提高 5%。'
-          };
-        }
-        UI.render();
-        return;
-      }
+  function renderView() {
+    if (!UI.game) return;
+    if (UI.game.ending) { renderEnding(); return; }
+    var scroll = window.scrollY;
+    if (UI.tab === 'sect') renderSect();
+    else if (UI.tab === 'disciples') renderDisciples();
+    else if (UI.tab === 'build') renderBuild();
+    else if (UI.tab === 'affairs') renderAffairs();
+    else if (UI.tab === 'market') renderMarket();
+    window.scrollTo(0, scroll);
+  }
 
-      /* ---------- 历练 ---------- */
-      case 'explore': {
-        if (!s) return;
-        var rExp = E.explore(s, el.dataset.region);
-        if (!rExp.ok) {
-          if (s.ended) { UI.modal = { type: 'ending' }; UI.render(); }
-          else UI.toast(rExp.error, 'danger');
-          return;
-        }
-        UI.modal = { type: 'event', event: rExp.event, region: rExp.region };
-        UI.persist();
-        UI.render();
-        return;
-      }
-      case 'choose': {
-        if (!s || !UI.modal || UI.modal.type !== 'event') return;
-        var ev = UI.modal.event;
-        var region = UI.modal.region;
-        var beforeCh = Object.assign({}, s.achievements);
-        var rr = E.resolveChoice(s, ev, Number(el.dataset.index));
-        if (!rr.ok) { UI.toast(rr.error, 'danger'); return; }
-        UI.modal = { type: 'event-result', event: ev, region: region, result: rr };
-        UI.persist(beforeCh);
-        UI.render();
-        return;
-      }
-      case 'to-battle': {
-        if (!s || !s.battle) { UI.modal = null; UI.render(); return; }
-        UI.modal = { type: 'battle' };
-        UI.battlePillOpen = false;
-        UI.render();
-        return;
-      }
+  /* ------------------------------------------------------------------ */
+  /* 宗门视图                                                           */
+  /* ------------------------------------------------------------------ */
+  function renderSect() {
+    if (!UI.game) return;
+    var st = stats();
+    var d = date(UI.game);
+    var buildDef = UI.buildType ? D.BUILDINGS[UI.buildType] : null;
+    var view = document.getElementById('view');
+    var selected = UI.selectedBuilding ? E.buildingById(UI.game, UI.selectedBuilding) : null;
+    var tasks = [];
+    if (st.foodDays <= 4) tasks.push({ text: '存粮仅够 ' + st.foodDays + ' 日，去坊市买粮或加派灵田人手。', tab: 'market', label: '去坊市' });
+    var bottleneck = E.aliveDisciples(UI.game).filter(function (x) { return x.exp >= E.expNeed(x) && x.realm < 9 && !x.autoBreakthrough; })[0];
+    if (bottleneck) tasks.push({ text: bottleneck.name + '已至瓶颈，可助其突破。', tab: 'disciples', label: '查看弟子', discipleId: bottleneck.id });
+    var idle = UI.game.buildings.find(function (b) {
+      var def = E.def(b);
+      return def && def.slots > 0 && b.type !== 'meditation' && !b.construction && !b.workers.length;
+    });
+    if (idle) tasks.push({ text: E.def(idle).name + '无人值守，产出停摆。', tab: 'sect', label: '查看建筑', buildingId: idle.id });
+    if (!tasks.length) tasks.push({ text: '山门安稳。当前目标是晋为' + (st.nextGrade ? st.nextGrade.name : '仙道圣地') + '。', tab: 'affairs', label: '安排事务' });
+    var guide = E.guideTasks(UI.game);
+    var guideDone = guide.filter(function (x) { return x.done; }).length;
+    var topDisciples = E.aliveDisciples(UI.game).sort(function (a, b) { return E.power(b, UI.game) - E.power(a, UI.game); }).slice(0, 3);
 
-      /* ---------- 战斗 ---------- */
-      case 'battle-act': {
-        if (!s || !s.battle) return;
-        var beforeBat = Object.assign({}, s.achievements);
-        var rb2 = E.battleAction(s, el.dataset.act);
-        if (!rb2.ok) { UI.toast(rb2.error, 'danger'); return; }
-        UI.battlePillOpen = false;
-        UI.persist(beforeBat);
-        UI.render();
-        return;
-      }
-      case 'battle-pill-menu': UI.battlePillOpen = true; UI.renderModal(); return;
-      case 'battle-pill-close': UI.battlePillOpen = false; UI.renderModal(); return;
-      case 'battle-pill': {
-        if (!s || !s.battle) return;
-        var beforeP = Object.assign({}, s.achievements);
-        var rp = E.battleAction(s, 'pill', el.dataset.id);
-        if (!rp.ok) { UI.toast(rp.error, 'danger'); return; }
-        UI.battlePillOpen = false;
-        UI.persist(beforeP);
-        UI.render();
-        return;
-      }
-      case 'close-battle': {
-        if (!s || !s.battle) return;
-        E.endBattle(s);
-        UI.modal = s.ended ? { type: 'ending' } : null;
-        UI.persist();
-        UI.render();
-        return;
-      }
+    view.innerHTML = '<div class="sect-layout">' +
+      '<section class="map-panel panel">' +
+      '<div class="map-head"><div><p class="eyebrow">QINGYA MOUNTAIN</p><h2>' + h(UI.game.sectName) + ' · 山门舆图</h2></div><div class="map-head-right"><span class="weather-chip">' + h(weather().glyph) + ' · ' + h(d.season.full) + '</span><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span></div></div>' +
+      '<div class="map-frame ' + (UI.buildType ? 'build-mode' : '') + '" id="map-frame">' +
+      mapSvg() +
+      weatherLayer() +
+      '<div class="map-plaque"><b>青崖山</b><span>云深不知处</span></div>' +
+      '<div class="map-side-tools">' +
+      '<button class="map-tool" data-action="map-zoom-in" aria-label="放大">＋</button>' +
+      '<button class="map-tool" data-action="map-zoom-out" aria-label="缩小">−</button>' +
+      '<button class="map-tool" data-action="map-reset" aria-label="复位">回</button>' +
+      '</div>' +
+      (UI.buildType && buildDef ? '<div class="build-banner"><span>' + seal(buildDef.glyph) + '<b>营造 · ' + h(buildDef.name) + '</b><small>在舆图上选择一块空地</small></span><button class="btn btn-ghost btn-sm" data-action="cancel-build">取消</button></div>' : '') +
+      '</div>' +
+      '<div class="map-foot"><div class="map-legend"><span>' + dot('#8f6a43') + '宗门建筑</span><span>' + dot('#4e7c78') + '内门弟子</span><span>' + dot('#b08a4a') + '外门弟子</span><span>' + dot('#7fa3a2') + '水泽</span><span>' + dot('#b9d6c6') + '灵脉</span></div><span class="map-hint">' + (UI.buildType ? '点击发光的空地放置建筑' : '点击建筑或弟子查看详情') + '</span></div>' +
+      '</section>' +
 
-      /* ---------- 物品 ---------- */
-      case 'use-item': {
-        if (!s) return;
-        var beforeU = Object.assign({}, s.achievements);
-        var ru = E.useItem(s, el.dataset.id);
-        if (!ru.ok) { UI.toast(ru.error, 'danger'); return; }
-        UI.persist(beforeU);
-        UI.render();
-        UI.toast(esc(ru.text), 'success');
-        return;
-      }
-      case 'equip-item': {
-        if (!s) return;
-        var re = E.equipItem(s, el.dataset.id);
-        if (!re.ok) { UI.toast(re.error, 'danger'); return; }
-        UI.persist(); UI.render();
-        UI.toast('已装备「' + esc(D.ITEMS[el.dataset.id].name) + '」', 'success');
-        return;
-      }
-      case 'unequip': {
-        if (!s) return;
-        var rv = E.unequipItem(s, el.dataset.slot);
-        if (!rv.ok) { UI.toast(rv.error, 'danger'); return; }
-        UI.persist(); UI.render();
-        UI.toast('已取下装备', 'info');
-        return;
-      }
-      case 'sell-item': {
-        if (!s) return;
-        var rs = E.sellItem(s, el.dataset.id, 1);
-        if (!rs.ok) { UI.toast(rs.error, 'danger'); return; }
-        UI.persist(); UI.render();
-        UI.toast('出售成功 · 灵石 +' + fmt(rs.stones), 'gold');
-        return;
-      }
-      case 'equip-tech': {
-        if (!s) return;
-        var rt = E.equipTechnique(s, el.dataset.id);
-        if (!rt.ok) { UI.toast(rt.error, 'danger'); return; }
-        UI.persist(); UI.render();
-        UI.toast('已改修「' + esc(D.TECHNIQUES[el.dataset.id].name) + '」', 'success');
-        return;
-      }
+      '<aside class="side-column">' +
+      (selected ? selectedBuildingCard(selected) : '') +
+      '<div class="panel sect-status">' +
+      '<div class="panel-head"><h3>宗门气象</h3><span class="panel-mark">' + st.fsGrade + '</span></div>' +
+      '<div class="grade-line"><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span><span>' + h(st.grade.desc) + '</span></div>' +
+      '<div class="renown-line"><span>声望 ' + fmt(UI.game.resources.renown) + (st.nextGrade ? ' / ' + st.nextGrade.min : '') + '</span><div class="bar bar-renown"><i style="width:' + (st.nextGrade ? pct((UI.game.resources.renown - st.grade.min) / (st.nextGrade.min - st.grade.min) * 100) : 100) + '%"></i></div></div>' +
+      '<div class="stat-grid">' +
+      '<div class="stat"><small>灵气</small><b>' + st.aura + '</b><span>修炼加成</span></div>' +
+      '<div class="stat"><small>风水</small><b>' + st.fengShui + '</b><span>' + st.fsGrade + '</span></div>' +
+      '<div class="stat"><small>弟子</small><b>' + st.innerCount + '<em>内</em> / ' + st.outerCount + '<em>外</em></b><span>床位 ' + st.housing + '</span></div>' +
+      '<div class="stat"><small>存粮</small><b>' + st.foodDays + '<em>日</em></b><span>每日 ' + st.dailyFood + '</span></div>' +
+      '<div class="stat"><small>内门战力</small><b>' + fmt(st.power) + '</b><span>山门守备</span></div>' +
+      '<div class="stat"><small>空地</small><b>' + countBuildable() + '</b><span>可营造</span></div>' +
+      '</div>' +
+      '<div class="fs-track"><div class="fs-track-head"><span>风水格局</span><span>' + st.fsGrade + '</span></div>' + bar(st.fengShui, 'bar-jade') + '</div>' +
+      (st.layoutNotes.length ? '<div class="layout-notes">' + st.layoutNotes.slice(0, 3).map(function (n) { return '<span class="mini-chip">' + h(n) + '</span>'; }).join('') + '</div>' : '') +
+      '</div>' +
 
-      /* ---------- 坊市与炼丹 ---------- */
-      case 'buy': {
-        if (!s) return;
-        var rbuy = E.buyStock(s, Number(el.dataset.index));
-        if (!rbuy.ok) { UI.toast(rbuy.error, 'danger'); return; }
-        UI.persist(); UI.render();
-        UI.toast('购得' + esc(rbuy.text) + '。', 'success');
-        return;
-      }
-      case 'refresh-market': {
-        if (!s) return;
-        var rrf = E.refreshMarket(s, true);
-        if (!rrf.ok) { UI.toast(rrf.error, 'danger'); return; }
-        UI.persist(); UI.render();
-        UI.toast('货架已换新 · 灵石 -' + fmt(rrf.cost), 'info');
-        return;
-      }
-      case 'craft': {
-        if (!s) return;
-        var beforeCr = Object.assign({}, s.achievements);
-        var rcr = E.craft(s, el.dataset.id);
-        if (!rcr.ok) {
-          if (s.ended) { UI.persist(beforeCr); UI.modal = { type: 'ending' }; UI.render(); }
-          else UI.toast(rcr.error, 'danger');
-          return;
-        }
-        UI.modal = s.ended ? { type: 'ending' } : null;
-        UI.persist(beforeCr); UI.render();
-        UI.toast(esc(rcr.text), rcr.success ? 'success' : 'danger');
-        return;
-      }
+      '<div class="panel objective-panel">' +
+      '<div class="panel-head"><h3>当前要务</h3><span class="panel-mark">令</span></div>' +
+      tasks.slice(0, 2).map(function (t) {
+        return '<div class="objective"><span class="objective-dot"></span><p>' + h(t.text) + '</p><button class="btn btn-ghost btn-sm" data-action="task-go" data-tab="' + t.tab + '" data-disciple="' + (t.discipleId || '') + '" data-building="' + (t.buildingId || '') + '">' + h(t.label) + '</button></div>';
+      }).join('') +
+      '</div>' +
 
-      /* ---------- 通用 ---------- */
-      case 'settings': UI.modal = { type: 'settings' }; UI.renderModal(); return;
-      case 'theme': {
-        var theme = el.dataset.value;
-        if (theme !== UI.settings.theme) {
-          UI.settings.theme = theme;
-          saveSettings(); applySettings(); UI.render();
-        }
-        return;
-      }
-      case 'toggle-motion': {
-        UI.settings.motion = !UI.settings.motion;
-        saveSettings(); applySettings(); UI.render();
-        return;
-      }
-      case 'copy-save': {
-        var area = document.getElementById('save-data');
-        if (!area) return;
-        area.select();
-        var okCopy = false;
-        try { okCopy = document.execCommand('copy'); } catch (e) { okCopy = false; }
-        if (!okCopy && navigator.clipboard) {
-          navigator.clipboard.writeText(area.value).then(function () { UI.toast('存档已复制', 'success'); });
-        } else if (okCopy) {
-          UI.toast('存档已复制', 'success');
-        } else {
-          UI.toast('复制失败，请手动选择文本复制。', 'danger');
-        }
-        return;
-      }
-      case 'import-save': {
-        var imp = document.getElementById('import-data');
-        if (!imp || !imp.value.trim()) { UI.toast('请先粘贴存档内容。', 'danger'); return; }
-        var oldRaw = null;
-        try { oldRaw = localStorage.getItem(D.SAVE_KEY); } catch (e) { oldRaw = null; }
-        try {
-          var parsed = JSON.parse(imp.value.trim());
-          if (!parsed || !parsed.player || !parsed.player.base || parsed.version !== D.VERSION) throw new Error('bad save');
-          E.save(parsed);
-          var loaded2 = E.load();
-          if (!loaded2) throw new Error('load failed');
-          UI.toast('存档导入成功。', 'success');
-          enterGame(loaded2, false);
-        } catch (e) {
-          try {
-            if (oldRaw) localStorage.setItem(D.SAVE_KEY, oldRaw);
-            else E.deleteSave();
-          } catch (err) { /* ignore */ }
-          UI.toast('存档格式不正确，无法导入。', 'danger');
-        }
-        return;
-      }
-      case 'restart': {
-        UI.modal = {
-          type: 'confirm', title: '重新开始',
-          text: '这会删除当前存档，从问心开始新的一世。轮回印记会保留。确定吗？',
-          confirmAction: 'restart', confirmLabel: '斩断此世'
-        };
-        UI.renderModal();
-        return;
-      }
-      case 'back-title': {
-        if (s) UI.persist();
-        UI.showLanding();
-        return;
-      }
-      case 'show-ending': UI.modal = { type: 'ending' }; UI.renderModal(); return;
-      case 'ending-close': UI.modal = null; UI.render(); return;
-      case 'close-modal': {
-        if (s && s.battle && !s.battle.over) return;
-        UI.modal = null;
-        UI.battlePillOpen = false;
-        UI.renderModal();
-        return;
-      }
-      case 'close-intro': UI.modal = null; UI.render(); return;
-      default: return;
+      (guideDone < guide.length ? '<div class="panel guide-panel"><div class="panel-head"><h3>初立山门</h3><span class="panel-mark">' + guideDone + '/' + guide.length + '</span></div>' +
+        guide.map(function (g) {
+          return '<div class="guide-row ' + (g.done ? 'done' : '') + '"><span class="guide-check">' + (g.done ? '✓' : '') + '</span><span>' + h(g.text) + '</span></div>';
+        }).join('') +
+        '<p class="guide-hint">完成这些事，山门就算真正转起来了。</p></div>' : '') +
+
+      '<div class="panel disciples-snapshot"><div class="panel-head"><h3>山中弟子</h3><button class="text-btn" data-action="nav" data-tab="disciples">全部 ›</button></div>' +
+      topDisciples.map(function (d) {
+        return '<button class="snapshot-row" data-action="open-disciple" data-id="' + d.id + '">' + avatarSvg(d, 40) +
+          '<span class="snapshot-main"><b>' + h(d.name) + '</b><small>' + h(stage(d)) + ' · ' + h(d.stateLabel) + '</small></span>' +
+          '<span class="snapshot-mood">' + moodGlyph(d.mood) + '</span></button>';
+      }).join('') + '</div>' +
+
+      '<div class="panel news-panel"><div class="panel-head"><h3>山门纪要</h3><button class="text-btn" data-action="open-log">全部 ›</button></div>' +
+      logList(6) + '</div>' +
+      '</aside></div>';
+  }
+
+  function selectedBuildingCard(b) {
+    var def = E.def(b);
+    if (!def) return '';
+    return '<div class="panel selected-building"><div class="panel-head"><h3>' + h(def.name) + '</h3><button class="text-btn" data-action="open-building" data-id="' + b.id + '">详情 ›</button></div>' +
+      '<div class="selected-building-main">' + seal(def.glyph) + '<div><b>Lv.' + b.level + '</b><p>' + h(def.effect) + '</p><small>' + (b.construction > 0 ? '营造中 · 还需 ' + Math.ceil(b.construction) + ' 日' : b.workers.length + ' / ' + E.slotsOf(b) + ' 人当值') + '</small></div></div></div>';
+  }
+
+  function moodGlyph(m) {
+    if (m >= 75) return '<span class="mood-face good">喜</span>';
+    if (m >= 50) return '<span class="mood-face">平</span>';
+    if (m >= 30) return '<span class="mood-face warn">忧</span>';
+    return '<span class="mood-face bad">苦</span>';
+  }
+
+  function logList(limit) {
+    var list = (UI.game.log || []).slice(0, limit);
+    if (!list.length) return '<p class="muted">山中无大事。</p>';
+    return '<div class="log-list">' + list.map(function (l) {
+      return '<div class="log-item log-' + l.type + '"><span class="log-date">' + h(l.date) + '</span><span class="log-dot"></span><p>' + h(l.text) + '</p></div>';
+    }).join('') + '</div>';
+  }
+
+  function countBuildable() {
+    var n = 0;
+    for (var y = 0; y < UI.game.map.length; y++) {
+      for (var x = 0; x < UI.game.map[y].length; x++) if (E.isBuildable(UI.game, x, y)) n++;
     }
+    return n;
   }
 
-  function onClick(e) {
-    var el = e.target.closest('[data-action]');
-    if (!el) return;
-    var action = el.dataset.action;
-    if (!action) return;
-    /* 复选框的默认行为需要先发生 */
-    onAction(action, el);
+  /* ------------------------------------------------------------------ */
+  /* 弟子视图                                                           */
+  /* ------------------------------------------------------------------ */
+  function renderDisciples() {
+    var list = E.aliveDisciples(UI.game).slice().sort(function (a, b) {
+      if (a.role !== b.role) return a.role === 'inner' ? -1 : 1;
+      return (b.realm - a.realm) || (b.layer - a.layer) || a.name.localeCompare(b.name, 'zh');
+    });
+    if (UI.filter === 'inner') list = list.filter(function (d) { return d.role === 'inner'; });
+    if (UI.filter === 'outer') list = list.filter(function (d) { return d.role === 'outer'; });
+    if (UI.filter === 'idle') list = list.filter(function (d) { return !d.job && !d.missionId; });
+    if (UI.filter === 'hurt') list = list.filter(function (d) { return d.injury > 20 || d.health < 70; });
+    if (UI.filter === 'mission') list = list.filter(function (d) { return d.missionId; });
+    var filters = [['all', '全部'], ['inner', '内门'], ['outer', '外门'], ['idle', '空闲'], ['hurt', '受伤'], ['mission', '在外']];
+    var st = stats();
+    document.getElementById('view').innerHTML = '<div class="view-page">' +
+      '<div class="view-head"><div><p class="eyebrow">DISCIPLES OF THE SECT</p><h2>山中弟子</h2><p>外门劳作，内门修行。人各有命，也各有各的心事。</p></div>' +
+      '<div class="view-head-actions"><span class="capacity-note">床位 ' + st.housing + ' · 弟子 ' + (st.innerCount + st.outerCount) + '</span><button class="btn btn-primary" data-action="recruit">招收外门 <small>20 灵石</small></button></div></div>' +
+      '<div class="filter-tabs">' + filters.map(function (f) {
+        return '<button class="filter-chip ' + (UI.filter === f[0] ? 'active' : '') + '" data-action="filter" data-value="' + f[0] + '">' + f[1] + '<small>' + (f[0] === 'all' ? E.aliveDisciples(UI.game).length : listCount(f[0])) + '</small></button>';
+      }).join('') + '</div>' +
+      '<div class="disciple-grid">' + list.map(discipleCard).join('') + '</div>' +
+      (list.length ? '' : '<div class="empty-state">' + seal('静') + '<h3>这里暂时没有人</h3><p>换个筛选，或者去山门外招几个弟子。</p><button class="btn btn-ghost" data-action="recruit">招收外门</button></div>') +
+      '</div>';
   }
 
-  function onInput(e) {
-    if (e.target && e.target.matches('[data-name-input]') && UI.creation) {
-      UI.creation.name = e.target.value;
-    }
+  function listCount(filter) {
+    var list = E.aliveDisciples(UI.game);
+    if (filter === 'inner') return list.filter(function (d) { return d.role === 'inner'; }).length;
+    if (filter === 'outer') return list.filter(function (d) { return d.role === 'outer'; }).length;
+    if (filter === 'idle') return list.filter(function (d) { return !d.job && !d.missionId; }).length;
+    if (filter === 'hurt') return list.filter(function (d) { return d.injury > 20 || d.health < 70; }).length;
+    if (filter === 'mission') return list.filter(function (d) { return d.missionId; }).length;
+    return list.length;
   }
 
-  function onKeydown(e) {
-    if (e.isComposing) return;
-    if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('[data-name-input]') && UI.creation) {
-      onAction('creation-next', { dataset: {} });
+  function discipleCard(d) {
+    var pr = E.stageProgress(d);
+    var need = pr.need;
+    var isBottleneck = d.exp >= need && d.realm < 9;
+    var job = d.job ? E.buildingById(UI.game, d.job) : null;
+    var jobName = d.missionId ? '在外历练' : job ? E.def(job).name : '闲居';
+    return '<article class="disciple-card ' + (d.id === UI.game.playerId ? 'is-player' : '') + '">' +
+      '<div class="dc-head">' + avatarSvg(d, 58) + '<div class="dc-title"><div><h3>' + h(d.name) + (d.id === UI.game.playerId ? ' <span class="badge badge-player">掌门</span>' : '') + '</h3><span class="dc-role">' + roleBadge(d) + '<span class="realm-text">' + h(stage(d)) + '</span></span></div><small>' + h(d.origin) + ' · ' + d.age + '岁</small></div></div>' +
+      '<div class="dc-cult"><div class="dc-cult-head"><span>' + (isBottleneck ? '瓶颈' : '修为') + '</span><b>' + Math.floor(d.exp) + ' / ' + need + '</b></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') + '</div>' +
+      '<div class="dc-needs">' + needBar('心境', d.mood, d.mood < 30 ? 'bar-red' : 'bar-jade') + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + '</div>' +
+      '<div class="dc-meta"><span class="job-chip">' + h(jobName) + '</span><span class="power-chip">战力 ' + fmt(E.power(d, UI.game)) + '</span></div>' +
+      '<div class="dc-traits">' + (d.traits || []).slice(0, 3).map(function (t) { return '<span class="mini-chip">' + h(D.TRAITS[t] ? D.TRAITS[t].name : t) + '</span>'; }).join('') + '</div>' +
+      '<div class="dc-actions"><button class="btn btn-ghost btn-sm" data-action="open-disciple" data-id="' + d.id + '">详情</button>' +
+      (isBottleneck ? '<button class="btn btn-primary btn-sm" data-action="breakthrough" data-id="' + d.id + '">助其突破</button>' : '') +
+      (d.role === 'outer' && d.realm === 0 && d.layer >= 2 ? '<button class="btn btn-jade btn-sm" data-action="promote" data-id="' + d.id + '">晋升内门</button>' : '') +
+      '</div></article>';
+  }
+
+  function openDisciple(id) {
+    var d = E.discipleById(UI.game, id);
+    if (!d) return;
+    UI.selectedDisciple = id;
+    var pr = E.stageProgress(d);
+    var isBottleneck = d.exp >= pr.need && d.realm < 9;
+    var job = d.job ? E.buildingById(UI.game, d.job) : null;
+    var eligible = E.eligibleJobs(UI.game, d);
+    var jobHtml = eligible.length ? eligible.map(function (b) {
+      var def = E.def(b);
+      var disabled = b.workers.length >= E.slotsOf(b) || (d.job === b.id);
+      return '<button class="job-option ' + (d.job === b.id ? 'active' : '') + '" data-action="assign" data-id="' + d.id + '" data-building="' + b.id + '" ' + (disabled ? 'disabled' : '') + '>' +
+        '<span class="job-option-glyph">' + def.glyph + '</span><span><b>' + h(def.name) + '</b><small>' + b.workers.length + ' / ' + E.slotsOf(b) + ' 人</small></span></button>';
+    }).join('') : '<p class="muted">暂时没有适合的差事。先造一座静室、灵田或丹房。</p>';
+    var pillHtml = Object.keys(D.PILLS).filter(function (p) { return (UI.game.pills[p] || 0) > 0; }).map(function (p) {
+      var pill = D.PILLS[p];
+      return '<button class="pill-use" data-action="use-pill" data-id="' + d.id + '" data-pill="' + p + '">' + seal(pill.glyph) + '<span><b>' + h(pill.name) + '</b><small>' + h(pill.desc) + '</small></span><em>×' + UI.game.pills[p] + '</em></button>';
+    }).join('');
+    var promoteReq = d.role === 'outer' && d.realm === 0 && d.layer >= 2 && E.aptitude(d) >= 2;
+    var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + (d.id === UI.game.playerId ? 'SECT MASTER' : d.role === 'inner' ? 'INNER DISCIPLE' : 'OUTER DISCIPLE') + '</p><h2>' + h(d.name) + (d.id === UI.game.playerId ? ' · 掌门' : '') + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
+      '<div class="detail-body">' +
+      '<div class="detail-bio">' + h(d.bio || '山中岁月长，来日方长。') + '</div>' +
+      '<div class="detail-cols">' +
+      '<div class="detail-col"><h4>修行</h4><div class="detail-big">' + h(stage(d)) + '<small>' + Math.floor(d.exp) + ' / ' + pr.need + ' 修为</small></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') +
+      '<div class="stat-pills"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>战力 <b>' + fmt(E.power(d, UI.game)) + '</b></span><span>灵根 <b>' + h(rootOf(d).name) + '</b></span><span title="' + h(E.techniqueOf(d).desc) + '">功法 <b>' + h(E.techniqueOf(d).name) + '</b></span></div>' +
+      '<p class="tech-note">' + h(E.techniqueOf(d).desc) + '</p>' +
+      (isBottleneck ? '<div class="bottleneck-box">' + seal('破') + '<div><b>已至瓶颈</b><p>突破成功率 ' + Math.round(E.breakChance(d, UI.game) * 100) + '%</p></div></div><div class="detail-actions"><button class="btn btn-primary" data-action="breakthrough" data-id="' + d.id + '">尝试突破</button>' + ((UI.game.pills.pojing || 0) > 0 ? '<button class="btn btn-jade" data-action="breakthrough-pill" data-id="' + d.id + '">服破境丹突破</button>' : '') + '</div>' : '') +
+      (promoteReq ? '<div class="detail-actions"><button class="btn btn-jade" data-action="promote" data-id="' + d.id + '">晋升内门 · 50 灵石</button></div>' : '') +
+      '</div>' +
+      '<div class="detail-col"><h4>状态</h4><div class="need-list">' + needBar('心境', d.mood, d.mood < 30 ? 'bar-red' : 'bar-jade') + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + needBar('气血', d.health, d.health < 50 ? 'bar-red' : 'bar-jade') + needBar('筋骨', 100 - d.injury, d.injury > 30 ? 'bar-red' : 'bar-jade') + '</div>' +
+      '<div class="trait-row">' + (d.traits || []).map(function (t) { var tr = D.TRAITS[t]; return tr ? '<span class="trait-chip ' + (tr.rarity === '天' ? 'trait-heaven' : tr.rarity === '地' ? 'trait-earth' : '') + '" title="' + h(tr.desc) + '">' + h(tr.name) + '</span>' : ''; }).join('') + '</div>' +
+      '</div></div>' +
+      relationSection(d) +
+      '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (d.missionId ? '在外历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
+      (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-grid">' + jobHtml + '</div>' + (d.job ? '<button class="btn btn-ghost btn-sm" data-action="assign" data-id="' + d.id + '" data-building="">解除差事</button>' : '')) +
+      '</div>' +
+      '<div class="detail-section"><h4>丹药</h4>' + (pillHtml || '<p class="muted">丹房里还没有存药。灵草可在药圃种植，丹方在参研中解锁。</p>') + '</div>' +
+      '</div>';
+    openModal(content, { class: 'detail-modal', dismissible: true });
+  }
+
+  function relationSection(d) {
+    var rows = Object.keys(d.relations || {}).map(function (id) {
+      var other = E.discipleById(UI.game, id);
+      return other && !other.dead ? { d: other, bond: d.relations[id] } : null;
+    }).filter(Boolean).sort(function (a, b) { return b.bond - a.bond; }).slice(0, 4);
+    if (!rows.length) return '';
+    return '<div class="detail-section"><div class="detail-section-head"><h4>同门</h4><span>日久见人心</span></div><div class="relation-list">' +
+      rows.map(function (r) {
+        var label = r.bond >= 70 ? '知己' : r.bond >= 55 ? '友善' : r.bond >= 35 ? '平常' : r.bond >= 20 ? '疏远' : '不和';
+        var cls = r.bond >= 70 ? 'good' : r.bond >= 55 ? 'warm' : r.bond < 20 ? 'bad' : '';
+        return '<div class="relation-row">' + avatarSvg(r.d, 28) + '<span class="relation-name">' + h(r.d.name) + '</span><span class="relation-bar"><i class="' + cls + '" style="width:' + pct(r.bond) + '%"></i></span><em class="' + cls + '">' + label + '</em></div>';
+      }).join('') + '</div></div>';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 营造视图                                                           */
+  /* ------------------------------------------------------------------ */
+  function renderBuild() {
+    var cats = D.BUILD_CATEGORIES;
+    var list = D.BUILD_ORDER.map(function (id) { return D.BUILDINGS[id]; }).filter(function (def) {
+      if (UI.buildCat !== 'all' && def.category !== UI.buildCat) return false;
+      return true;
+    });
+    var st = stats();
+    document.getElementById('view').innerHTML = '<div class="view-page">' +
+      '<div class="view-head"><div><p class="eyebrow">BUILD &amp; ARRANGE</p><h2>营造山门</h2><p>木石有价，风水无形。建筑挨在哪里，也是一门学问。</p></div><div class="view-head-actions"><span class="capacity-note">空地 ' + countBuildable() + ' · 风水 ' + st.fengShui + ' ' + st.fsGrade + '</span></div></div>' +
+      '<div class="build-layout"><section><div class="cat-tabs">' + cats.map(function (c) {
+        return '<button class="filter-chip ' + (UI.buildCat === c.id ? 'active' : '') + '" data-action="build-cat" data-value="' + c.id + '">' + c.name + '</button>';
+      }).join('') + '</div><div class="build-grid">' + list.map(buildingCatalogCard).join('') + '</div></section>' +
+      '<aside class="build-aside"><div class="panel"><div class="panel-head"><h3>山中营造</h3><span class="panel-mark">' + UI.game.buildings.length + '</span></div>' +
+      UI.game.buildings.slice().sort(function (a, b) { return (a.y + a.x) - (b.y + b.x); }).map(function (b) {
+        var def = E.def(b);
+        return '<button class="built-row" data-action="open-building" data-id="' + b.id + '"><span class="built-glyph">' + def.glyph + '</span><span><b>' + h(def.name) + '</b><small>Lv.' + b.level + (b.construction > 0 ? ' · 营造中' : ' · ' + b.workers.length + ' 人') + '</small></span><em>' + (b.construction > 0 ? '…' : '›') + '</em></button>';
+      }).join('') + '</div>' +
+      '<div class="panel build-note"><div class="panel-head"><h3>风水小记</h3><span class="panel-mark">诀</span></div><p>' + h(st.grade.desc) + '</p><ul><li>静室靠近聚灵阵，灵气更盛。</li><li>丹房靠近药圃，取药更顺手。</li><li>弟子居靠近灵井，起居更清爽。</li><li>灵田与药圃受季节影响，冬天前要囤粮。</li></ul></div></aside></div></div>';
+  }
+
+  function buildingCatalogCard(def) {
+    var built = UI.game.buildings.some(function (b) { return b.type === def.id; });
+    var locked = def.unlock && !E.hasResearch(UI.game, def.unlock);
+    var can = E.canAfford(UI.game, def.cost);
+    var uniqueBlocked = def.unique && built;
+    var cost = Object.keys(def.cost).length ? Object.keys(def.cost).map(function (k) {
+      return '<span class="cost-chip ' + ((UI.game.resources[k] || 0) < def.cost[k] ? 'lack' : '') + '">' + (D.RESOURCES[k] ? D.RESOURCES[k].glyph : k) + ' ' + def.cost[k] + '</span>';
+    }).join('') : '<span class="cost-chip">初始建筑</span>';
+    return '<article class="build-card ' + (locked ? 'locked' : '') + ' ' + (uniqueBlocked ? 'built' : '') + '">' +
+      '<div class="build-card-head"><span class="build-glyph">' + h(def.glyph) + '</span><div><h3>' + h(def.name) + '</h3><small>' + (D.BUILD_CATEGORIES.find(function (c) { return c.id === def.category; }) || {}).name + '</small></div>' + (built && def.unique ? '<span class="badge">已建</span>' : '') + '</div>' +
+      '<p class="build-desc">' + h(def.desc) + '</p>' +
+      '<div class="build-effect">' + h(def.effect) + '</div>' +
+      '<div class="cost-row">' + cost + '</div>' +
+      '<button class="btn ' + (locked || uniqueBlocked || !can ? 'btn-ghost' : 'btn-primary') + ' btn-sm btn-block" data-action="select-build" data-type="' + def.id + '" ' + (locked || uniqueBlocked ? 'disabled' : '') + '>' + (locked ? '需参研' : uniqueBlocked ? '已建成' : '选择位置') + '</button>' +
+      '</article>';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 事务视图                                                           */
+  /* ------------------------------------------------------------------ */
+  function renderAffairs() {
+    var tabs = [['mission', '历练'], ['alchemy', '丹房'], ['study', '参研']];
+    var body = UI.affairsTab === 'mission' ? missionView() : UI.affairsTab === 'alchemy' ? alchemyView() : studyView();
+    document.getElementById('view').innerHTML = '<div class="view-page">' +
+      '<div class="view-head"><div><p class="eyebrow">AFFAIRS OF THE SECT</p><h2>山门事务</h2><p>派人下山，开炉炼丹，或者去藏经阁里坐一坐。</p></div><div class="view-head-actions"><span class="capacity-note">悟道 ' + fmt(UI.game.insight) + '</span></div></div>' +
+      '<div class="sub-tabs">' + tabs.map(function (t) { return '<button class="filter-chip ' + (UI.affairsTab === t[0] ? 'active' : '') + '" data-action="affairs-tab" data-value="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      body + '</div>';
+  }
+
+  function missionView() {
+    var active = UI.game.missions.map(function (m) {
+      var region = D.MISSIONS.find(function (x) { return x.id === m.missionId; });
+      var names = m.discipleIds.map(function (id) { var d = E.discipleById(UI.game, id); return d ? d.name : '？'; }).join('、');
+      return '<div class="active-mission panel"><div class="panel-head"><h3>' + h(region ? region.name : '在外') + '</h3><span class="badge badge-warn">' + m.daysLeft + ' 日</span></div><p>' + h(names) + ' 正在外历练。</p><div class="bar bar-gold"><i style="width:' + pct((m.days - m.daysLeft) / m.days * 100) + '%"></i></div><small class="muted">队伍战力 ' + fmt(m.teamPower) + '</small></div>';
+    }).join('');
+    var cards = D.MISSIONS.map(function (m) {
+      var reached = E.missionReachable(UI.game, m);
+      var req = m.danger === 0 ? '外门可去' : '需内门 · ' + D.REALMS[m.minRealm].short;
+      var reward = [];
+      if (m.rewards.food) reward.push('食物');
+      if (m.rewards.herbs) reward.push('灵草');
+      if (m.rewards.stones) reward.push('灵石');
+      if (m.rewards.pills) reward.push('丹药');
+      return '<article class="mission-card panel ' + (!reached ? 'locked' : '') + '">' +
+        '<div class="mission-card-head"><span class="mission-glyph" style="--mc:' + m.color + '">' + m.glyph + '</span><div><h3>' + h(m.name) + '</h3><small>危险 ' + '◆'.repeat(m.danger || 0) + (m.danger ? '' : '◇') + ' · ' + m.days + ' 日</small></div></div>' +
+        '<p>' + h(m.desc) + '</p><div class="mission-req"><span>' + req + '</span><span>建议战力 ' + fmt(m.minPower || 0) + '</span></div>' +
+        '<div class="mission-reward">' + reward.map(function (r) { return '<span class="mini-chip">' + r + '</span>'; }).join('') + '</div>' +
+        '<button class="btn btn-ghost btn-sm btn-block" data-action="mission-open" data-id="' + m.id + '" ' + (!reached ? 'disabled' : '') + '>' + (reached ? '选择弟子' : '声望不足') + '</button>' +
+        '</article>';
+    }).join('');
+    return '<div class="mission-layout">' + (active ? '<div class="active-missions">' + active + '</div>' : '') + '<div class="mission-grid">' + cards + '</div></div>';
+  }
+
+  function alchemyView() {
+    var buildings = UI.game.buildings.filter(function (b) { return b.type === 'alchemy'; });
+    if (!buildings.length) return '<div class="empty-state">' + seal('丹') + '<h3>还没有丹房</h3><p>去营造一座丹房，把药圃里的灵草炼成丹药。</p><button class="btn btn-primary" data-action="nav" data-tab="build">去营造</button></div>';
+    var html = buildings.map(function (b) {
+      var worker = b.workers.length ? E.discipleById(UI.game, b.workers[0]) : null;
+      var recipes = D.RECIPES.filter(function (r) { return E.recipeUnlocked(UI.game, r); });
+      var current = D.RECIPES.find(function (r) { return r.id === b.recipe; });
+      var batch = b.batch;
+      return '<div class="alchemy-card panel"><div class="panel-head"><h3>' + h(E.def(b).name) + ' · Lv.' + b.level + '</h3><span class="panel-mark">' + (b.construction ? '建' : worker ? '炼' : '空') + '</span></div>' +
+        '<p class="muted">' + (b.construction ? '营造中，还需 ' + Math.ceil(b.construction) + ' 日。' : worker ? worker.name + ' 在炉前当值。' : '无人看火，丹炉是冷的。') + '</p>' +
+        (batch ? '<div class="batch"><div class="batch-head"><b>' + h((D.RECIPES.find(function (r) { return r.id === batch.recipe; }) || {}).name || '丹药') + '</b><span>' + Math.floor(batch.progress) + ' / ' + batch.days + ' 日</span></div>' + bar(batch.progress / batch.days * 100, 'bar-gold') + '</div>' : '') +
+        '<div class="recipe-list">' + recipes.map(function (r) {
+          var pill = D.PILLS[r.out];
+          var has = Object.keys(r.mats).every(function (k) { return (UI.game.resources[k] || 0) >= r.mats[k]; });
+          return '<button class="recipe-option ' + (b.recipe === r.id ? 'active' : '') + '" data-action="recipe" data-building="' + b.id + '" data-recipe="' + r.id + '"><span class="recipe-glyph">' + pill.glyph + '</span><span><b>' + h(r.name) + '</b><small>' + Object.keys(r.mats).map(function (k) { return (D.RESOURCES[k] ? D.RESOURCES[k].name : k) + ' ' + r.mats[k]; }).join(' · ') + (has ? '' : ' · 材料不足') + '</small></span></button>';
+        }).join('') + '</div>' +
+        (!worker ? '<button class="btn btn-ghost btn-sm" data-action="open-building" data-id="' + b.id + '">安排丹师</button>' : '') +
+        '</div>';
+    }).join('');
+    var inventory = Object.keys(D.PILLS).filter(function (p) { return (UI.game.pills[p] || 0) > 0; }).map(function (p) {
+      return '<div class="pill-inventory"><span class="pill-glyph">' + D.PILLS[p].glyph + '</span><div><b>' + h(D.PILLS[p].name) + '</b><small>' + h(D.PILLS[p].desc) + '</small></div><em>×' + UI.game.pills[p] + '</em></div>';
+    }).join('');
+    return '<div class="alchemy-layout">' + html + '<div class="panel"><div class="panel-head"><h3>药匣</h3><span class="panel-mark">丹</span></div>' + (inventory || '<p class="muted">尚无存药。</p>') + '<p class="muted small">丹药可在弟子详情中服用。</p></div></div>';
+  }
+
+  function studyView() {
+    var nodes = D.RESEARCH.map(function (n) {
+      var done = E.hasResearch(UI.game, n.id);
+      var canReq = (n.requires || []).every(function (r) { return E.hasResearch(UI.game, r); });
+      var can = !done && canReq && (UI.game.insight || 0) >= n.cost;
+      return '<article class="research-card panel ' + (done ? 'done' : '') + '">' +
+        '<div class="research-head"><span class="research-glyph">' + n.glyph + '</span><div><h3>' + h(n.name) + '</h3><small>' + (done ? '已参研' : '需悟道 ' + n.cost) + '</small></div></div>' +
+        '<p>' + h(n.desc) + '</p><div class="research-effect">' + h(n.effect) + '</div>' +
+        (n.requires.length ? '<div class="research-req">前置：' + n.requires.map(function (r) { var x = D.RESEARCH.find(function (q) { return q.id === r; }); return x ? x.name : r; }).join('、') + '</div>' : '') +
+        '<button class="btn ' + (done ? 'btn-ghost' : can ? 'btn-primary' : 'btn-ghost') + ' btn-sm btn-block" data-action="research" data-id="' + n.id + '" ' + (!can ? 'disabled' : '') + '>' + (done ? '已参研' : canReq ? '参研' : '前置未成') + '</button>' +
+        '</article>';
+    }).join('');
+    return '<div class="study-top"><div class="panel insight-panel"><div><p class="eyebrow">INSIGHT</p><h3>' + fmt(UI.game.insight) + '</h3><span>悟道点 · 藏经阁每日产出</span></div>' + seal('道') + '</div><div class="panel small-panel"><b>参研之道</b><p>藏经阁有人当值时，会持续产出悟道。参研可解锁新的建筑、丹方与宗门加成。</p></div></div><div class="research-grid">' + nodes + '</div>';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 坊市视图                                                           */
+  /* ------------------------------------------------------------------ */
+  function renderMarket() {
+    var stock = UI.game.market.stock || [];
+    var restock = Math.max(0, UI.game.market.restockDay - UI.game.day);
+    document.getElementById('view').innerHTML = '<div class="view-page">' +
+      '<div class="view-head"><div><p class="eyebrow">MOUNTAIN MARKET</p><h2>山下坊市</h2><p>胡商的车马每月来两次。灵石带够，话别说太满。</p></div><div class="view-head-actions"><span class="capacity-note">' + restock + ' 日后换货</span><span class="capacity-note">灵石 ' + fmt(UI.game.resources.stones) + '</span></div></div>' +
+      '<div class="market-layout"><section class="panel"><div class="panel-head"><h3>今日货单</h3><span class="panel-mark">买</span></div><div class="market-grid">' +
+      (stock.length ? stock.map(function (it, i) {
+        var meta = it.kind === 'pill' ? D.PILLS[it.id] : D.RESOURCES[it.id];
+        var name = meta ? meta.name : it.id;
+        var glyph = meta ? meta.glyph : '货';
+        var color = meta && meta.color ? meta.color : '#8f6a43';
+        return '<article class="market-item"><span class="market-glyph" style="--mc:' + color + '">' + glyph + '</span><div class="market-item-main"><b>' + h(name) + '</b><small>' + (it.gift ? '行商相赠' : it.kind === 'pill' ? '丹药' : '材料') + ' · 余 ' + it.qty + '</small></div><div class="market-price">' + (it.gift ? '赠' : it.price + ' 石') + '</div>' +
+          '<div class="market-actions"><button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="1">购 1</button>' + (it.qty >= 5 ? '<button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="5">购 5</button>' : '') + '</div></article>';
+      }).join('') : '<p class="muted">货架空了，等下一班商队。</p>') +
+      '</div></section>' +
+      '<aside class="panel"><div class="panel-head"><h3>卖出</h3><span class="panel-mark">卖</span></div>' +
+      ['food', 'wood', 'stone', 'herbs'].map(function (id) {
+        var r = D.RESOURCES[id];
+        return '<div class="sell-row"><span class="sell-glyph" style="--rc:' + r.color + '">' + r.glyph + '</span><div><b>' + h(r.name) + '</b><small>存 ' + fmt(UI.game.resources[id]) + ' · ' + E.sellPrices[id] + ' 石/份</small></div><button class="btn btn-ghost btn-xs" data-action="sell" data-id="' + id + '" data-qty="5" ' + ((UI.game.resources[id] || 0) < 5 ? 'disabled' : '') + '>卖 5</button></div>';
+      }).join('') +
+      '<div class="market-note">' + seal('商') + '<p>声望越高，行商给的面子越大。参研天机推演还能再压一压价。</p></div></aside></div></div>';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 弹窗基础                                                           */
+  /* ------------------------------------------------------------------ */
+  function openModal(content, opts) {
+    opts = opts || {};
+    var root = document.getElementById('modal-root');
+    root.innerHTML = '<div class="modal-backdrop" data-action="' + (opts.dismissible === false ? 'noop' : 'backdrop-close') + '"><div class="modal ' + (opts.class || '') + '" role="dialog" aria-modal="true">' + content + '</div></div>';
+    document.body.classList.add('modal-open');
+    UI.modalOpen = true;
+    if (!opts.keepKey) UI.modalKey = opts.key || '';
+    setTimeout(function () {
+      var btn = root.querySelector('.modal-close');
+      if (btn) btn.focus();
+    }, 30);
+  }
+
+  function closeModal() {
+    document.getElementById('modal-root').innerHTML = '';
+    document.body.classList.remove('modal-open');
+    UI.modalOpen = false;
+    UI.modalKey = '';
+    if (UI.game) { renderHeader(); renderNav(); if (UI.tab !== 'sect' || !UI.game.pendingEvent) renderView(); }
+  }
+
+  function syncAutoModals() {
+    if (!UI.game) return;
+    if (UI.game.pendingEvent) {
+      var key = 'event:' + UI.game.pendingEvent;
+      if (UI.modalKey !== key) openEventModal(UI.game.pendingEvent);
       return;
     }
-    if (e.key === 'Escape') {
-      var closeable = ['settings', 'confirm', 'intro', 'event'];
-      if (UI.modal && closeable.indexOf(UI.modal.type) !== -1) {
-        UI.modal = null;
-        UI.battlePillOpen = false;
-        UI.renderModal();
+    if (UI.game.pendingResult) {
+      var rkey = 'result:' + (UI.game.pendingResult.title || '') + ':' + UI.game.day;
+      if (UI.modalKey !== rkey) openResultModal(UI.game.pendingResult);
+      return;
+    }
+    if (UI.game.pendingReport) {
+      var repKey = 'report:' + (UI.game.pendingReport.title || '') + ':' + UI.game.day + ':' + (UI.game.pendingReport.lines || []).length;
+      if (UI.modalKey !== repKey) openReportModal(UI.game.pendingReport);
+      return;
+    }
+    if (UI.game.ending && UI.modalKey !== 'ending') renderEnding();
+  }
+
+  function openEventModal(id) {
+    var ev = E.getEvent(id);
+    if (!ev) { UI.game.pendingEvent = null; return; }
+    var choices = E.eventChoices(UI.game, id);
+    var content = '<div class="event-modal">' + eventArt(ev.art) +
+      '<div class="event-content"><p class="eyebrow">AN EVENT AT THE GATE</p><h2>' + h(ev.title) + '</h2><p class="event-text">' + h(ev.text) + '</p>' +
+      '<div class="choice-list">' + choices.map(function (c) {
+        return '<button class="choice-btn" data-action="event-choice" data-index="' + c.index + '" ' + (!c.available ? 'disabled' : '') + '><span class="choice-mark">' + (c.index + 1) + '</span><span><b>' + h(c.label) + '</b><small>' + h(c.available ? c.hint : c.reason) + '</small></span><em>›</em></button>';
+      }).join('') + '</div></div></div>';
+    openModal(content, { class: 'event-modal-wrap', dismissible: false, key: 'event:' + id });
+  }
+
+  function openResultModal(res) {
+    var content = '<div class="result-modal"><div class="result-head"><p class="eyebrow">THE MATTER IS SETTLED</p><h2>' + h(res.title) + '</h2></div><div class="result-body"><p>' + h(res.text) + '</p>' +
+      (res.details && res.details.length ? '<div class="result-details">' + res.details.map(function (d) { return '<span class="reward-chip">' + h(d) + '</span>'; }).join('') + '</div>' : '') +
+      (res.battle ? '<div class="battle-log">' + res.battle.lines.map(function (l) { return '<p>' + h(l) + '</p>'; }).join('') + (res.battle.rewards ? '<div class="result-details">' + rewardChips(res.battle.rewards) + '</div>' : '') + '</div>' : '') +
+      '</div><div class="modal-actions"><button class="btn btn-primary" data-action="close-result">知道了</button></div></div>';
+    openModal(content, { class: 'result-modal-wrap', dismissible: false, key: 'result:' + (res.title || '') + ':' + UI.game.day });
+  }
+
+  function rewardChips(rewards) {
+    if (!rewards) return '';
+    var out = [];
+    Object.keys(rewards).forEach(function (k) {
+      if (k === 'pills' && rewards[k] && rewards[k].length) out.push((D.PILLS[rewards[k][0]] || {}).name + ' +1');
+      else if (typeof rewards[k] === 'number' && rewards[k] !== 0) out.push((D.RESOURCES[k] ? D.RESOURCES[k].name : k) + ' ' + signed(rewards[k]));
+    });
+    return out.map(function (x) { return '<span class="reward-chip">' + h(x) + '</span>'; }).join('');
+  }
+
+  function openReportModal(rep) {
+    var content = '<div class="report-modal"><div class="result-head"><p class="eyebrow">' + (rep.type === 'battle' ? 'A BATTLE AT THE GATE' : 'RETURN FROM THE WILD') + '</p><h2>' + h(rep.title) + '</h2></div><div class="result-body">' +
+      (rep.team && rep.team.length ? '<p class="muted">同行：' + h(rep.team.join('、')) + '</p>' : '') +
+      (rep.lines || []).map(function (l) { return '<p class="report-line">' + h(l) + '</p>'; }).join('') +
+      (rep.rewards ? '<div class="result-details">' + rewardChips(rep.rewards) + '</div>' : '') +
+      '</div><div class="modal-actions"><button class="btn btn-primary" data-action="close-report">收下</button></div></div>';
+    openModal(content, { class: 'report-modal-wrap', dismissible: false, key: 'report:' + (rep.title || '') + ':' + UI.game.day + ':' + (rep.lines || []).length });
+  }
+
+  function openIntro() {
+    var content = '<div class="intro-modal"><div class="intro-art">' + landingArt() + '</div><div class="intro-body"><p class="eyebrow">THE FIRST DAY</p><h2>青崖山，山门初立</h2><p>' + h(D.STORY.start) + '</p><div class="intro-list"><div><b>先看差事</b><span>三名外门弟子已在灵田、药圃、膳堂当值。掌门在静室修炼。</span></div><div><b>再修房子</b><span>弟子居床位有限，灵田与药圃受季节影响。缺什么就去营造。</span></div><div><b>别忘了山下</b><span>历练能带回灵石与声望。声望越高，宗门品阶越高。</span></div></div><div class="modal-actions"><button class="btn btn-primary" data-action="close-modal">开始经营</button><button class="btn btn-ghost" data-action="help">详细玩法</button></div></div></div>';
+    openModal(content, { class: 'intro-modal-wrap', dismissible: true, key: 'intro' });
+  }
+
+  function openSettings() {
+    var content = '<div class="settings-modal"><div class="modal-head"><div><p class="eyebrow">SETTINGS</p><h2>山中杂记</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="settings-body">' +
+      '<div class="settings-row"><div><b>纸色 / 夜色</b><small>白日是宣纸，夜里是松烟。</small></div><div class="theme-toggle"><button class="filter-chip ' + (UI.settings.theme === 'paper' ? 'active' : '') + '" data-action="theme" data-value="paper">宣纸</button><button class="filter-chip ' + (UI.settings.theme === 'night' ? 'active' : '') + '" data-action="theme" data-value="night">夜色</button></div></div>' +
+      '<div class="settings-row"><div><b>时间速度</b><small>事件发生时会自动暂停。</small></div><div class="theme-toggle"><button class="filter-chip ' + (UI.speed === 1 ? 'active' : '') + '" data-action="speed" data-value="1">1×</button><button class="filter-chip ' + (UI.speed === 2 ? 'active' : '') + '" data-action="speed" data-value="2">2×</button><button class="filter-chip ' + (UI.speed === 4 ? 'active' : '') + '" data-action="speed" data-value="4">4×</button></div></div>' +
+      '<div class="settings-row"><div><b>存档</b><small>保存在本机浏览器中。换设备请导出。</small></div><div class="settings-actions"><button class="btn btn-ghost btn-sm" data-action="save-now">立即存档</button><button class="btn btn-ghost btn-sm" data-action="export-save">导出</button><button class="btn btn-ghost btn-sm" data-action="import-save">导入</button></div></div>' +
+      '<div class="settings-row"><div><b>山门</b><small>重开一局会覆盖当前存档。</small></div><div class="settings-actions"><button class="btn btn-ghost btn-sm" data-action="help">玩法说明</button><button class="btn btn-ghost btn-sm" data-action="new-game">重开山门</button></div></div>' +
+      '<div class="settings-note"><b>关于</b><p>《一念长生 · 宗门篇》是一款原创网页修仙经营游戏。玩法气质参考《了不起的修仙模拟器》等宗门模拟作品；代码、文案与全部图形均为原创，未使用任何游戏素材。</p><p>存档只保存在你的浏览器里。清除网站数据会失去存档。</p></div>' +
+      '</div></div>';
+    openModal(content, { class: 'settings-modal-wrap', dismissible: true, key: 'settings' });
+  }
+
+  function openHelp() {
+    var content = '<div class="help-modal"><div class="modal-head"><div><p class="eyebrow">HOW TO PLAY</p><h2>宗门入门</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="help-body">' +
+      '<div class="help-block"><h3>一、外门与内门</h3><p>外门弟子负责灵田、药圃、膳堂等劳作；内门弟子专注修炼，也可守丹房、藏经阁与演武场。外门弟子修到炼气三层，可花 50 灵石晋升内门。</p></div>' +
+      '<div class="help-block"><h3>二、四时与吃穿</h3><p>灵田和药圃受季节影响，冬天近乎绝收。弟子每天消耗粮食；膳堂有人当值可减少消耗并提升心境。床位不足、饥饿和受伤都会拖慢修行。</p></div>' +
+      '<div class="help-block"><h3>三、风水与修炼</h3><p>静室、聚灵阵和灵脉提升灵气；建筑相邻会产生风水加成。灵气与风水越高，弟子修炼越快，突破也越稳。内门弟子会优先进入有空位的静室。</p></div>' +
+      '<div class="help-block"><h3>四、事务</h3><p>藏经阁产出悟道，用于参研。丹房把灵草炼成丹药。历练可派弟子下山，带回灵石、灵草、丹药与声望；受伤的弟子需要药庐休养。</p></div>' +
+      '<div class="help-block"><h3>五、目标</h3><p>提升声望，让宗门从荒山小门一路晋为仙道圣地；同时培养弟子渡劫飞升。掌门若遭遇不测，最强大的内门弟子会继任。</p></div>' +
+      '<div class="settings-note"><b>提示</b><p>' + D.TIPS.map(function (t) { return '· ' + h(t); }).join('<br>') + '</p></div>' +
+      '</div></div>';
+    openModal(content, { class: 'help-modal-wrap', dismissible: true, key: 'help' });
+  }
+
+  function openAlerts() {
+    var alerts = E.alerts(UI.game);
+    var content = '<div class="alerts-modal"><div class="modal-head"><div><p class="eyebrow">WARNINGS</p><h2>山门警讯</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="alert-list">' +
+      (alerts.length ? alerts.map(function (a) {
+        return '<div class="alert-row alert-' + a.type + '"><span class="alert-mark">' + (a.type === 'food' ? '粮' : a.type === 'event' ? '事' : a.type === 'bottleneck' ? '破' : '警') + '</span><p>' + h(a.text) + '</p>' + (a.discipleId ? '<button class="btn btn-ghost btn-xs" data-action="open-disciple" data-id="' + a.discipleId + '">查看</button>' : '') + '</div>';
+      }).join('') : '<div class="empty-state small"><h3>山门无事</h3><p>弟子各安其位，炉火正旺。</p></div>') +
+      '</div></div>';
+    openModal(content, { class: 'alerts-modal-wrap', dismissible: true, key: 'alerts' });
+  }
+
+  function openBuilding(id) {
+    var b = E.buildingById(UI.game, id);
+    if (!b) return;
+    UI.selectedBuilding = id;
+    var def = E.def(b);
+    var workers = b.workers.map(function (id) { return E.discipleById(UI.game, id); }).filter(Boolean);
+    var eligible = E.aliveDisciples(UI.game).filter(function (d) {
+      if (d.missionId) return false;
+      var allowed = { meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'], arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'], infirmary: ['outer', 'inner'] }[b.type];
+      return (!allowed || allowed.indexOf(d.role) >= 0);
+    });
+    var cost = {};
+    var base = def.upgradeCost || def.cost || {};
+    Object.keys(base).forEach(function (k) { cost[k] = Math.round(base[k] * (1 + ((b.level || 1) - 1) * 0.8)); });
+    var content = '<div class="modal-head building-modal-head"><div><p class="eyebrow">BUILDING</p><h2>' + h(def.name) + ' · Lv.' + b.level + '</h2><p class="detail-sub">' + h(def.effect) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
+      '<div class="building-portrait">' + buildingPortrait(b.type, b.level) + '</div>' +
+      '<div class="detail-body"><p class="detail-bio">' + h(def.desc) + '</p>' +
+      '<div class="building-facts"><span>灵气 <b>+' + ((def.aura || 0) * b.level) + '</b></span><span>风水 <b>+' + ((def.fengShui || 0) * b.level) + '</b></span><span>当值 <b>' + workers.length + ' / ' + E.slotsOf(b) + '</b></span>' + (def.capacity ? '<span>可住 <b>' + E.capacityOf(b) + '</b></span>' : '') + '</div>' +
+      '<div class="detail-section"><div class="detail-section-head"><h4>当值弟子</h4><span>' + (b.construction > 0 ? '营造中 · 还需 ' + Math.ceil(b.construction) + ' 日' : '') + '</span></div>' +
+      (b.construction > 0 ? '<p class="muted">建筑尚未落成。</p>' : (workers.length ? '<div class="worker-list">' + workers.map(function (d) { return '<button class="worker-chip" data-action="open-disciple" data-id="' + d.id + '">' + avatarSvg(d, 30) + '<span>' + h(d.name) + '</span><em>查看</em></button>'; }).join('') + '</div>' : '<p class="muted">此处还没有人当值。</p>')) +
+      (b.construction <= 0 && E.slotsOf(b) > 0 && workers.length < E.slotsOf(b) ? '<div class="assign-list"><h4>可安排</h4>' + eligible.filter(function (d) { return b.workers.indexOf(d.id) < 0; }).map(function (d) { return '<button class="assign-chip" data-action="assign" data-id="' + d.id + '" data-building="' + b.id + '">' + avatarSvg(d, 28) + '<span>' + h(d.name) + '</span><small>' + h(stage(d)) + '</small></button>'; }).join('') + '</div>' : '') +
+      '</div>' +
+      (b.type === 'alchemy' ? '<div class="detail-section"><div class="detail-section-head"><h4>当前丹方</h4></div><div class="recipe-options inline">' + D.RECIPES.filter(function (r) { return E.recipeUnlocked(UI.game, r); }).map(function (r) { return '<button class="recipe-option ' + (b.recipe === r.id ? 'active' : '') + '" data-action="recipe" data-building="' + b.id + '" data-recipe="' + r.id + '">' + D.PILLS[r.out].glyph + ' ' + h(r.name) + '</button>'; }).join('') + '</div></div>' : '') +
+      '<div class="building-actions">' +
+      (b.level < def.maxLevel ? '<button class="btn btn-primary" data-action="upgrade" data-id="' + b.id + '" ' + (b.construction > 0 ? 'disabled' : '') + '>' + (b.construction > 0 ? '落成后可扩建' : '扩建至 Lv.' + (b.level + 1) + ' <small>' + Object.keys(cost).map(function (k) { return (D.RESOURCES[k] ? D.RESOURCES[k].glyph : k) + ' ' + cost[k]; }).join(' · ') + '</small>') + '</button>' : '<span class="badge">已至最高等级</span>') +
+      (b.type !== 'gate' ? '<button class="btn btn-ghost" data-action="demolish" data-id="' + b.id + '">拆除</button>' : '') +
+      '</div></div></div>';
+    openModal(content, { class: 'building-modal-wrap', dismissible: true, key: 'building:' + id });
+  }
+
+  function buildingPortrait(type, level) {
+    var fake = { id: 'portrait', type: type, x: 0, y: 0, level: level || 1, construction: 0, workers: [] };
+    return '<svg viewBox="0 0 260 190" class="portrait-svg"><circle cx="204" cy="44" r="36" fill="#f5edda" opacity=".55"/><path d="M-10 150 Q60 122 130 144 T270 132 L270 200 L-10 200 Z" fill="#b8c4ac" opacity=".35"/><g transform="translate(130,150) scale(1.72)">' + buildingGroup(fake, { noIso: true }) + '</g></svg>';
+  }
+
+  function openLog() {
+    var logs = UI.game.log || [];
+    openModal('<div class="modal-head"><div><p class="eyebrow">SECT CHRONICLE</p><h2>山门纪要</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="log-full">' + (logs.length ? logs.map(function (l) { return '<div class="log-item log-' + l.type + '"><span class="log-date">' + h(l.date) + '</span><span class="log-dot"></span><p>' + h(l.text) + '</p></div>'; }).join('') : '<p class="muted">尚无记载。</p>') + '</div>', { class: 'log-modal-wrap', dismissible: true, key: 'log' });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 招募 / 任务 / 结局                                                 */
+  /* ------------------------------------------------------------------ */
+  function openRecruit() {
+    var r = E.recruitCandidates(UI.game);
+    if (!r.ok) { toast(r.msg, 'warn'); return; }
+    saveNow();
+    renderAll();
+    openRecruitModal();
+  }
+
+  function openRecruitModal() {
+    var list = UI.game.recruitCandidates;
+    if (!list) return;
+    var content = '<div class="modal-head"><div><p class="eyebrow">AT THE GATE</p><h2>山门招徒</h2><p class="detail-sub">挑一个顺眼的。剩下的，给份干粮送下山。</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="candidate-grid">' +
+      list.map(function (d) {
+        return '<article class="candidate-card"><div class="candidate-head">' + avatarSvg(d, 70) + '<div><h3>' + h(d.name) + '</h3><span>' + h(rootOf(d).name) + ' · ' + h(d.origin) + '</span></div></div><p class="candidate-bio">' + h(rootOf(d).desc) + '</p><div class="candidate-stats"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>年龄 <b>' + d.age + '</b></span><span>修为 <b>' + h(stage(d)) + '</b></span></div><div class="trait-row">' + (d.traits || []).map(function (t) { return '<span class="trait-chip">' + h(D.TRAITS[t] ? D.TRAITS[t].name : t) + '</span>'; }).join('') + '</div><button class="btn btn-primary btn-sm btn-block" data-action="choose-recruit" data-id="' + d.id + '">收入门下</button></article>';
+      }).join('') + '</div>';
+    openModal(content, { class: 'recruit-modal-wrap', dismissible: true, key: 'recruit' });
+  }
+
+  function openMissionPicker(missionId) {
+    var m = D.MISSIONS.find(function (x) { return x.id === missionId; });
+    if (!m) return;
+    UI.missionPick = { missionId: missionId, ids: [] };
+    openMissionModal();
+  }
+
+  function openMissionModal() {
+    var m = D.MISSIONS.find(function (x) { return x.id === UI.missionPick.missionId; });
+    if (!m) return;
+    var list = E.aliveDisciples(UI.game).filter(function (d) { return !d.missionId; });
+    var selected = UI.missionPick.ids;
+    var power = selected.reduce(function (s, id) { var d = E.discipleById(UI.game, id); return s + (d ? E.power(d, UI.game) : 0); }, 0);
+    var content = '<div class="modal-head"><div><p class="eyebrow">EXPEDITION</p><h2>' + h(m.name) + '</h2><p class="detail-sub">危险 ' + (m.danger || 0) + ' · ' + m.days + ' 日 · 建议战力 ' + fmt(m.minPower || 0) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p class="detail-bio">' + h(m.desc) + ' ' + h(m.flavor) + '</p>' +
+      '<div class="mission-pick-summary"><span>已选 <b>' + selected.length + '</b> / 2</span><span>队伍战力 <b>' + fmt(power) + '</b></span></div>' +
+      '<div class="pick-list">' + list.map(function (d) {
+        var roleOk = m.allowOuter || d.role === 'inner';
+        var realmOk = d.realm >= (m.minRealm || 0);
+        var healthOk = d.health >= 30;
+        var disabled = !roleOk || !realmOk || !healthOk || (selected.length >= 2 && selected.indexOf(d.id) < 0);
+        var reason = !roleOk ? '需内门' : !realmOk ? '境界不足' : !healthOk ? '伤势未愈' : '';
+        return '<button class="pick-card ' + (selected.indexOf(d.id) >= 0 ? 'active' : '') + '" data-action="mission-pick" data-id="' + d.id + '" ' + (disabled ? 'disabled' : '') + '>' + avatarSvg(d, 38) + '<span><b>' + h(d.name) + '</b><small>' + roleBadge(d) + ' ' + h(stage(d)) + ' · 战力 ' + fmt(E.power(d, UI.game)) + (reason ? ' · ' + reason : '') + '</small></span><em>' + (selected.indexOf(d.id) >= 0 ? '✓' : '') + '</em></button>';
+      }).join('') + '</div>' +
+      '<div class="modal-actions"><button class="btn btn-ghost" data-action="close-modal">再想想</button><button class="btn btn-primary" data-action="launch-mission" ' + (selected.length ? '' : 'disabled') + '>启程 · 食物 ' + (3 * selected.length) + '</button></div></div>';
+    openModal(content, { class: 'mission-modal-wrap', dismissible: true, key: 'mission:' + m.id });
+  }
+
+  function renderEnding() {
+    var end = UI.game.ending;
+    if (!end) return;
+    var content = '<div class="ending-modal"><div class="ending-art">' + eventArt(end.type === 'ascension' ? 'moon' : 'sword') + '</div><div class="ending-body"><p class="eyebrow">' + (end.type === 'ascension' ? 'THE WAY IS OPEN' : 'THE LAMP GOES OUT') + '</p><h2>' + h(end.title) + '</h2><p>' + h(end.text) + '</p><div class="ending-stats"><div><b>' + date(UI.game).year + '</b><span>年</span></div><div><b>' + fmt(UI.game.resources.renown) + '</b><span>声望</span></div><div><b>' + E.aliveDisciples(UI.game).length + '</b><span>弟子</span></div><div><b>' + (UI.game.stats.breakthroughs || 0) + '</b><span>破境</span></div></div><div class="modal-actions">' + (end.type === 'ascension' ? '<button class="btn btn-ghost" data-action="ending-continue">继续守望山门</button>' : '') + '<button class="btn btn-primary" data-action="new-game">再开一局</button></div></div></div>';
+    openModal(content, { class: 'ending-modal-wrap', dismissible: false, key: 'ending' });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 时间循环                                                           */
+  /* ------------------------------------------------------------------ */
+  function startTimer() {
+    stopTimer();
+    UI.acc = 0;
+    UI.timer = setInterval(loop, 250);
+  }
+  function stopTimer() {
+    if (UI.timer) clearInterval(UI.timer);
+    UI.timer = null;
+  }
+  function loop() {
+    if (!UI.game || UI.paused || UI.modalOpen || document.hidden || UI.game.ending) return;
+    UI.acc += 0.25;
+    var interval = 2.8 / UI.speed;
+    if (UI.acc < interval) return;
+    UI.acc = 0;
+    E.tick(UI.game);
+    afterTick();
+  }
+
+  function afterTick() {
+    if (!UI.game) return;
+    if (UI.game.day - UI.lastSaveDay >= 7) saveNow();
+    renderAll();
+    if (UI.game.ending) { renderEnding(); return; }
+    syncAutoModals();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 事件处理                                                           */
+  /* ------------------------------------------------------------------ */
+  function handleAction(el) {
+    var action = el.getAttribute('data-action');
+    if (!action || action === 'noop') return;
+    var id = el.getAttribute('data-id');
+    var value = el.getAttribute('data-value');
+    var tab = el.getAttribute('data-tab');
+    switch (action) {
+      case 'continue': continueGame(); break;
+      case 'new-game':
+        if (UI.game) { UI.confirmNew = true; openNewConfirm(); }
+        else { renderCreation(); }
+        break;
+      case 'back-landing': renderLanding(); break;
+      case 'choose-origin': captureCreateFields(); UI.create.origin = value; renderCreation(); break;
+      case 'choose-root': captureCreateFields(); UI.create.root = value; renderCreation(); break;
+      case 'start-game': startGame(); break;
+      case 'nav': if (UI.game) { UI.tab = tab || 'sect'; UI.buildType = null; closeModal(); renderAll(); } break;
+      case 'task-go':
+        if (id === '') { /* noop */ }
+        if (el.getAttribute('data-disciple')) { UI.tab = 'disciples'; renderAll(); openDisciple(el.getAttribute('data-disciple')); }
+        else if (el.getAttribute('data-building')) { openBuilding(el.getAttribute('data-building')); }
+        else { UI.tab = tab || 'sect'; renderAll(); }
+        break;
+      case 'pause': UI.paused = !UI.paused; renderHeader(); break;
+      case 'speed': UI.paused = false; UI.speed = Number(value); UI.settings.speed = UI.speed; saveSettings(); renderHeader(); break;
+      case 'speed-cycle': {
+        var seq = [1, 2, 4];
+        UI.speed = seq[(seq.indexOf(UI.speed) + 1) % seq.length];
+        UI.paused = false;
+        UI.settings.speed = UI.speed;
+        saveSettings();
+        renderHeader();
+        break;
       }
+      case 'settings': openSettings(); break;
+      case 'alerts': openAlerts(); break;
+      case 'help': openHelp(); break;
+      case 'close-modal': closeModal(); break;
+      case 'backdrop-close': if (el === el.parentElement || el.classList.contains('modal-backdrop')) closeModal(); break;
+      case 'filter': UI.filter = value; renderDisciples(); break;
+      case 'open-disciple': closeModal(); UI.tab = 'disciples'; renderAll(); openDisciple(id); break;
+      case 'open-building': closeModal(); UI.tab = 'sect'; renderAll(); openBuilding(id); break;
+      case 'assign':
+        var res = E.assign(UI.game, id, el.getAttribute('data-building') || null);
+        if (!res.ok) toast(res.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); openDisciple(id); }
+        break;
+      case 'promote':
+        var pr = E.promote(UI.game, id);
+        if (!pr.ok) toast(pr.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); toast('晋升内门。', 'good'); }
+        break;
+      case 'breakthrough':
+        var br = E.tryBreakthrough(UI.game, id, false);
+        if (!br.ok) toast(br.msg || '突破失败。', 'warn'); else toast(br.ascended ? '飞升！' : '破境成功。', 'good');
+        saveNow(); closeModal(); renderAll(); syncAutoModals(); break;
+      case 'breakthrough-pill':
+        var bp = E.tryBreakthrough(UI.game, id, true);
+        if (!bp.ok) toast(bp.msg || '突破失败。', 'warn'); else toast(bp.ascended ? '飞升！' : '破境成功。', 'good');
+        saveNow(); closeModal(); renderAll(); syncAutoModals(); break;
+      case 'use-pill':
+        var up = E.usePill(UI.game, id, el.getAttribute('data-pill'));
+        if (!up.ok) toast(up.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); openDisciple(id); toast('药力化开。', 'good'); }
+        break;
+      case 'build-cat': UI.buildCat = value; renderBuild(); break;
+      case 'select-build':
+        var buildType = el.getAttribute('data-type') || value;
+        var def = D.BUILDINGS[buildType];
+        if (!def) break;
+        UI.buildType = buildType; UI.tab = 'sect'; closeModal(); renderAll(); toast('在舆图上选择空地营造' + def.name + '。');
+        break;
+      case 'cancel-build': UI.buildType = null; renderAll(); break;
+      case 'upgrade':
+        var upg = E.upgrade(UI.game, id);
+        if (!upg.ok) toast(upg.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); openBuilding(id); toast('扩建完成。', 'good'); }
+        break;
+      case 'demolish':
+        if (!confirm('确定拆除这座建筑？返还一半木石。')) break;
+        var dem = E.demolish(UI.game, id);
+        if (!dem.ok) toast(dem.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); toast('建筑已拆除。'); }
+        break;
+      case 'affairs-tab': UI.affairsTab = value; renderAffairs(); break;
+      case 'mission-open': openMissionPicker(el.getAttribute('data-id')); break;
+      case 'mission-pick':
+        var pick = UI.missionPick;
+        if (!pick) break;
+        var idx = pick.ids.indexOf(id);
+        if (idx >= 0) pick.ids.splice(idx, 1);
+        else if (pick.ids.length < 2) pick.ids.push(id);
+        openMissionModal();
+        break;
+      case 'launch-mission':
+        if (!UI.missionPick) break;
+        var ms = E.startMission(UI.game, UI.missionPick.missionId, UI.missionPick.ids);
+        if (!ms.ok) toast(ms.msg, 'warn');
+        else { UI.missionPick = null; saveNow(); closeModal(); renderAll(); toast('弟子启程下山。', 'good'); }
+        break;
+      case 'recipe':
+        var b = E.buildingById(UI.game, el.getAttribute('data-building'));
+        var rid = el.getAttribute('data-recipe');
+        if (b) {
+          var recipe = D.RECIPES.find(function (r) { return r.id === rid; });
+          if (recipe && E.recipeUnlocked(UI.game, recipe)) { b.recipe = rid; b.progress = 0; b.batch = null; saveNow(); closeModal(); renderAll(); toast('丹方已换为' + recipe.name + '。'); }
+        }
+        break;
+      case 'research':
+        var rr = E.researchNode(UI.game, id);
+        if (!rr.ok) toast(rr.msg, 'warn'); else { saveNow(); renderAll(); toast('参研有成。', 'good'); }
+        break;
+      case 'buy':
+        var buy = E.marketBuy(UI.game, Number(el.getAttribute('data-index')), Number(el.getAttribute('data-qty') || 1));
+        if (!buy.ok) toast(buy.msg, 'warn'); else { saveNow(); renderAll(); }
+        break;
+      case 'sell':
+        var sell = E.marketSell(UI.game, el.getAttribute('data-id'), Number(el.getAttribute('data-qty') || 5));
+        if (!sell.ok) toast(sell.msg, 'warn'); else { saveNow(); renderAll(); }
+        break;
+      case 'recruit': openRecruit(); break;
+      case 'choose-recruit':
+        var cr = E.chooseRecruit(UI.game, id);
+        if (!cr.ok) toast(cr.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); toast(cr.disciple.name + '拜入山门。', 'good'); }
+        break;
+      case 'open-log': openLog(); break;
+      case 'save-now': saveNow(); toast('已存档。', 'good'); break;
+      case 'export-save':
+        openExport(); break;
+      case 'download-save':
+        downloadSave(); break;
+      case 'import-save': openImport(); break;
+      case 'do-import':
+        var ta = document.getElementById('import-json');
+        var st = ta ? E.importState(ta.value) : null;
+        if (!st) toast('存档格式不正确。', 'warn');
+        else { UI.game = st; E.save(st); closeModal(); document.getElementById('app').innerHTML = shellHtml(); renderAll(); startTimer(); toast('存档已导入。', 'good'); }
+        break;
+      case 'theme': applyTheme(value); saveSettings(); openSettings(); break;
+      case 'map-zoom-in': UI.mapZoom = Math.min(1.65, UI.mapZoom + 0.15); renderSect(); break;
+      case 'map-zoom-out': UI.mapZoom = Math.max(0.8, UI.mapZoom - 0.15); renderSect(); break;
+      case 'map-reset': UI.mapZoom = 1; renderSect(); break;
+      case 'event-choice':
+        var evr = E.resolveEvent(UI.game, Number(el.getAttribute('data-index')));
+        if (!evr.ok) toast(evr.msg, 'warn'); else { saveNow(); UI.modalKey = ''; renderAll(); syncAutoModals(); }
+        break;
+      case 'close-result': E.closeResult(UI.game); UI.modalKey = ''; closeModal(); renderAll(); syncAutoModals(); break;
+      case 'close-report': E.closeReport(UI.game); UI.modalKey = ''; closeModal(); renderAll(); syncAutoModals(); break;
+      case 'ending-continue':
+        UI.game.ending = null; UI.modalKey = ''; closeModal(); renderAll(); startTimer(); break;
+      case 'new-confirm': startNewConfirmed(); break;
+      default: break;
     }
   }
 
+  function openNewConfirm() {
+    var content = '<div class="confirm-modal"><div class="modal-head"><div><p class="eyebrow">A NEW BEGINNING</p><h2>重开山门？</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p>当前存档会被覆盖。旧宗的故事，就留在这座山里了。</p><div class="modal-actions"><button class="btn btn-ghost" data-action="close-modal">再想想</button><button class="btn btn-primary" data-action="new-confirm">立新山门</button></div></div></div>';
+    openModal(content, { class: 'confirm-modal-wrap', dismissible: true, key: 'confirm-new' });
+  }
+
+  function startNewConfirmed() {
+    E.deleteSave();
+    UI.game = null;
+    closeModal();
+    renderCreation();
+  }
+
+  function openExport() {
+    var json = E.exportState(UI.game);
+    var content = '<div class="modal-head"><div><p class="eyebrow">ARCHIVE</p><h2>导出台账</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p class="muted">复制下面的文字，或下载为文件。</p><textarea class="save-textarea" readonly>' + h(json) + '</textarea><div class="modal-actions"><button class="btn btn-ghost" data-action="download-save">下载存档</button><button class="btn btn-primary" data-action="close-modal">关闭</button></div></div>';
+    openModal(content, { class: 'export-modal-wrap', dismissible: true, key: 'export' });
+  }
+
+  function downloadSave() {
+    try {
+      var blob = new Blob([E.exportState(UI.game)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'yinian-sect-' + Date.now() + '.json';
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    } catch (e) { toast('下载失败，请复制文本。', 'warn'); }
+  }
+
+  function openImport() {
+    var content = '<div class="modal-head"><div><p class="eyebrow">RESTORE</p><h2>导入台账</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p class="muted">把之前导出的存档内容粘贴到这里。</p><textarea id="import-json" class="save-textarea" placeholder="粘贴存档 JSON…"></textarea><div class="modal-actions"><button class="btn btn-primary" data-action="do-import">导入并继续</button><button class="btn btn-ghost" data-action="close-modal">取消</button></div></div>';
+    openModal(content, { class: 'import-modal-wrap', dismissible: true, key: 'import' });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 绑定                                                               */
+  /* ------------------------------------------------------------------ */
+  function bind() {
+    document.addEventListener('click', function (e) {
+      if (UI.suppressClick) { UI.suppressClick = false; return; }
+      var el = e.target.closest('[data-action]');
+      if (!el) return;
+      if (el.getAttribute('data-action') === 'backdrop-close' && e.target !== el) return;
+      if (el.disabled) return;
+      handleAction(el);
+    });
+
+    // 地图点击：建筑 / 弟子 / 空地
+    document.addEventListener('click', function (e) {
+      if (!UI.game || UI.modalOpen) return;
+      var frame = e.target.closest('#map-frame');
+      if (!frame) return;
+      var bEl = e.target.closest('[data-building]');
+      if (bEl) { if (!UI.buildType) openBuilding(bEl.getAttribute('data-building')); return; }
+      var dEl = e.target.closest('[data-disciple]');
+      if (dEl) { if (!UI.buildType) openDisciple(dEl.getAttribute('data-disciple')); return; }
+      var tEl = e.target.closest('[data-tile]');
+      if (!tEl) return;
+      var xy = tEl.getAttribute('data-tile').split(',').map(Number);
+      if (UI.buildType) {
+        var res = E.build(UI.game, UI.buildType, xy[0], xy[1]);
+        if (!res.ok) toast(res.msg, 'warn');
+        else {
+          var builtType = UI.buildType;
+          UI.buildType = null;
+          saveNow();
+          renderAll();
+          toast((D.BUILDINGS[builtType] || {}).name + '开始营造。', 'good');
+          openBuilding(res.building.id);
+        }
+      } else {
+        UI.tile = { x: xy[0], y: xy[1] };
+        var terrain = E.terrainAt(UI.game, xy[0], xy[1]);
+        var names = { G: '草地', F: '林地', M: '山岩', W: '水泽', S: '灵脉' };
+        toast((E.buildingAt(UI.game, xy[0], xy[1]) ? '此处已有建筑' : '此处是' + (names[terrain] || '空地') + (E.isBuildable(UI.game, xy[0], xy[1]) ? '，可以营造' : '')) + '。');
+        renderSect();
+      }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && UI.modalOpen) {
+        var close = document.querySelector('.modal-close');
+        if (close && close.getAttribute('data-action') === 'close-modal') closeModal();
+      }
+    });
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && UI.game) { UI.hiddenPause = true; UI.pausedBeforeHidden = UI.paused; UI.paused = true; }
+      else if (!document.hidden && UI.game && UI.hiddenPause) {
+        UI.paused = !!UI.pausedBeforeHidden;
+        UI.hiddenPause = false;
+        renderHeader();
+      }
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 启动                                                               */
+  /* ------------------------------------------------------------------ */
   UI.init = function () {
     loadSettings();
-    if (location.protocol !== 'file:' && !document.querySelector('link[rel="manifest"]')) {
-      var manifestLink = document.createElement('link');
-      manifestLink.rel = 'manifest';
-      manifestLink.href = 'manifest.webmanifest';
-      document.head.appendChild(manifestLink);
+    bind();
+    var app = document.getElementById('app');
+    var params = null;
+    try { params = new URLSearchParams(location.search); } catch (e) {}
+    if (params && params.get('preview') === '1' && app) {
+      UI.game = E.newGame({ seed: 20261113, sectName: '青崖宗', playerName: '沈未央', origin: 'clan', root: 'water' });
+      UI.tab = params.get('tab') || 'sect';
+      app.innerHTML = shellHtml();
+      renderAll();
+      startTimer();
+      if (params.get('modal') === 'disciple') openDisciple(UI.game.playerId);
+      if (params.get('modal') === 'event') { UI.game.pendingEvent = 'first_caravan'; renderAll(); syncAutoModals(); }
+      if (params.get('modal') === 'building') openBuilding(UI.game.buildings[1].id);
+      if (params.get('modal') === 'settings') openSettings();
+    } else if (app) {
+      renderLanding();
     }
-    document.addEventListener('click', onClick);
-    document.addEventListener('input', onInput);
-    document.addEventListener('keydown', onKeydown);
-    UI.render();
+    // 计时器常驻，由 loop 判断是否有游戏
+    setInterval(loop, 250);
   };
-})();
+
+  global.SectUI = UI;
+})(typeof window !== 'undefined' ? window : globalThis);
