@@ -92,6 +92,17 @@
 
   E.def = function (b) { return D.BUILDINGS[b.type] || null; };
 
+  var JOB_ROLES = {
+    meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'],
+    arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'],
+    infirmary: ['outer', 'inner']
+  };
+
+  function canWorkAt(b, d) {
+    var roles = JOB_ROLES[b.type];
+    return !roles || roles.indexOf(d.role) >= 0;
+  }
+
   E.slotsOf = function (b) {
     var def = E.def(b);
     if (!def || !def.slots) return 0;
@@ -521,6 +532,7 @@
       missions: [],
       log: [],
       eventLast: {},
+      lastEventDay: 0,
       flags: {},
       buffs: [],
       pendingEvent: null,
@@ -1052,6 +1064,60 @@
     return { ok: true, building: b };
   };
 
+  /* 自动择地：靠近现有屋舍，但避开山道；同类建筑略有聚集。 */
+  E.findBuildSpot = function (state, type) {
+    var def = D.BUILDINGS[type];
+    if (!def) return null;
+    var buildings = state.buildings || [];
+    var ax = D.MAP_W / 2, ay = D.MAP_H / 2;
+    if (buildings.length) {
+      ax = 0; ay = 0;
+      buildings.forEach(function (b) { ax += b.x; ay += b.y; });
+      ax /= buildings.length; ay /= buildings.length;
+    }
+    var prefer = {
+      alchemy: ['herb', 'well'], meditation: ['array', 'shrine'], dorm: ['well', 'kitchen'],
+      farm: ['well', 'herb'], herb: ['well', 'farm'], kitchen: ['farm', 'well'],
+      library: ['shrine', 'meditation'], infirmary: ['herb'], arena: ['meditation'],
+      guest: ['gate'], storage: ['gate', 'kitchen'], shrine: ['meditation'],
+      array: ['meditation'], well: ['farm', 'herb', 'kitchen'], pavilion: ['well'],
+      gate: ['pavilion']
+    }[type] || [];
+    var paths = state.paths || [];
+    var best = null, bestScore = -Infinity;
+    for (var y = 0; y < D.MAP_H; y++) {
+      for (var x = 0; x < D.MAP_W; x++) {
+        if (!E.isBuildable(state, x, y)) continue;
+        var dist = Math.abs(x - ax) + Math.abs(y - ay);
+        var adj = 0, pref = 0;
+        buildings.forEach(function (b) {
+          var dx = Math.abs(b.x - x), dy = Math.abs(b.y - y);
+          if (Math.max(dx, dy) <= 1) adj++;
+          if (dx + dy <= 2 && prefer.indexOf(b.type) >= 0) pref++;
+        });
+        var onPath = paths.some(function (p) { return p[0] === x && p[1] === y; });
+        var edge = (x < 1 || y < 1 || x > D.MAP_W - 2 || y > D.MAP_H - 2) ? 2 : 0;
+        var score = -dist * 1.35 + adj * 1.4 + pref * 2.8 - (onPath ? 7 : 0) - edge
+          + ((x * 31 + y * 17) % 13) * 0.001;
+        if (score > bestScore) { bestScore = score; best = { x: x, y: y }; }
+      }
+    }
+    return best;
+  };
+
+  E.buildAuto = function (state, type) {
+    var def = D.BUILDINGS[type];
+    if (!def) return { ok: false, msg: '未知建筑。' };
+    if (def.unique && state.buildings.some(function (b) { return b.type === type; })) return { ok: false, msg: '此建筑只能有一座。' };
+    if (def.unlock && !E.hasResearch(state, def.unlock)) return { ok: false, msg: '尚未参研出营造之法。' };
+    if (!E.canAfford(state, def.cost)) return { ok: false, msg: '木石灵石不足。' };
+    var spot = E.findBuildSpot(state, type);
+    if (!spot) return { ok: false, msg: '山中已无空地可营造。' };
+    var res = E.build(state, type, spot.x, spot.y);
+    if (res.ok) res.spot = spot;
+    return res;
+  };
+
   E.upgrade = function (state, buildingId) {
     var b = E.buildingById(state, buildingId);
     if (!b) return { ok: false, msg: '建筑不存在。' };
@@ -1097,14 +1163,11 @@
       if (b.construction > 0) return { ok: false, msg: '建筑尚未落成。' };
       def = E.def(b);
       if (!def || !def.slots) return { ok: false, msg: '此处不需要人手。' };
-      if (b.workers.length >= E.slotsOf(b)) return { ok: false, msg: '此处已满员。' };
-      var allowed = {
-        meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'],
-        arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'], infirmary: ['outer', 'inner']
-      }[b.type];
-      if (allowed && allowed.indexOf(d.role) < 0) {
+      if (b.workers.length >= E.slotsOf(b) && b.workers.indexOf(d.id) < 0) return { ok: false, msg: '此处已满员。' };
+      if (!canWorkAt(b, d)) {
         return { ok: false, msg: d.role === 'inner' ? '内门弟子不做这些粗活，可去静室、丹房、藏经阁或演武场。' : '外门弟子尚未筑基，不能入静室修炼。' };
       }
+      if (d.job === b.id) return { ok: true, msg: '已在此当值。' };
     }
     // 新差事验证通过后，再移除旧差事
     if (d.job) {
@@ -1120,17 +1183,81 @@
 
   E.eligibleJobs = function (state, d) {
     if (!d || d.dead) return [];
-    var allowed = {
-      meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'],
-      arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'], infirmary: ['outer', 'inner']
-    };
     return state.buildings.filter(function (b) {
       var def = E.def(b);
       if (!def || !def.slots || b.construction > 0) return false;
       if (b.workers.length >= E.slotsOf(b)) return false;
-      var roles = allowed[b.type];
-      return !roles || roles.indexOf(d.role) >= 0;
+      return canWorkAt(b, d);
     });
+  };
+
+  /* 给弟子挑一份最合适的差事：内门优先静室，外门按灵根与空缺补位。 */
+  E.recommendedJob = function (state, d) {
+    if (!d || d.dead) return null;
+    var candidates = state.buildings.filter(function (b) {
+      var def = E.def(b);
+      if (!def || !def.slots || b.construction > 0) return false;
+      if (!canWorkAt(b, d)) return false;
+      return b.workers.length < E.slotsOf(b) || b.id === d.job;
+    });
+    if (!candidates.length) return null;
+    var priorities = d.role === 'inner'
+      ? { meditation: 100, library: 58, alchemy: 54, arena: 46, infirmary: 30 }
+      : { farm: 58, herb: 56, kitchen: 52, infirmary: 42, library: 38, alchemy: 34 };
+    var best = null, bestScore = -Infinity;
+    candidates.forEach(function (b) {
+      var def = E.def(b);
+      var score = priorities[b.type] || 10;
+      if (b.id === d.job) score += 8;
+      score += (1 - b.workers.length / Math.max(1, E.slotsOf(b))) * 12;
+      if (def.aura) score += def.aura;
+      var traits = d.traits || [];
+      if (b.type === 'farm' || b.type === 'herb') {
+        if (traits.indexOf('shennong') >= 0) score += 32;
+      }
+      if (b.type === 'alchemy' && traits.indexOf('alchemy') >= 0) score += 36;
+      if (b.type === 'library' && traits.indexOf('scholar') >= 0) score += 30;
+      if (b.type === 'meditation') score += E.aptitude(d) * 2;
+      if (traits.indexOf('diligent') >= 0) score += 5;
+      if (traits.indexOf('lazy') >= 0) score -= 6;
+      if (score > bestScore) { bestScore = score; best = b; }
+    });
+    return best;
+  };
+
+  E.autoAssign = function (state, discipleId) {
+    var d = E.discipleById(state, discipleId);
+    if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
+    if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
+    var b = E.recommendedJob(state, d);
+    if (!b) return { ok: false, msg: '山中暂无合适差事。' };
+    var res = E.assign(state, d.id, b.id);
+    if (res.ok) res.building = b;
+    return res;
+  };
+
+  E.autoStaff = function (state, buildingId) {
+    var b = E.buildingById(state, buildingId);
+    if (!b) return { ok: false, msg: '建筑不存在。' };
+    var def = E.def(b);
+    if (!def || !def.slots) return { ok: false, msg: '此处不需要人手。' };
+    if (b.construction > 0) return { ok: false, msg: '建筑尚未落成。' };
+    var room = E.slotsOf(b) - b.workers.length;
+    if (room <= 0) return { ok: false, msg: '此处已满员。' };
+    var pool = E.aliveDisciples(state).filter(function (d) {
+      return !d.missionId && !d.job && d.id !== b.workers[0] && canWorkAt(b, d);
+    }).sort(function (a, c) {
+      var sa = E.aptitude(a) + (a.traits || []).length * 0.2;
+      var sc = E.aptitude(c) + (c.traits || []).length * 0.2;
+      return sc - sa;
+    });
+    var added = 0;
+    for (var i = 0; i < pool.length && added < room; i++) {
+      if (E.assign(state, pool[i].id, b.id).ok) added++;
+    }
+    if (!added) return { ok: false, msg: '暂无空闲弟子可补位。' };
+    E.log(state, def.name + '补入 ' + added + ' 名弟子。', 'job');
+    return { ok: true, count: added };
   };
 
   E.promote = function (state, discipleId) {
@@ -1473,12 +1600,15 @@
   function triggerEvent(state, ev) {
     state.pendingEvent = ev.id;
     state.eventLast[ev.id] = state.day;
+    state.lastEventDay = state.day;
     if (ev.once) state.flags['evt_' + ev.id] = true;
     E.log(state, '山门有事：' + ev.title, 'event');
   }
 
   function maybeEvent(state) {
     if (state.pendingEvent || state.pendingResult || state.pendingReport) return;
+    /* 两桩山门事之间至少隔半月，避免弹窗连番打断。 */
+    if (state.lastEventDay && state.day - state.lastEventDay < 15) return;
     var eligible = EV.filter(function (e) { return eventEligible(state, e); });
     if (!eligible.length) return;
     var priority = eligible.filter(function (e) { return e.priority; });
@@ -1486,8 +1616,8 @@
       triggerEvent(state, priority[0]);
       return;
     }
-    if (state.day < 5) return;
-    var good = 0.1;
+    if (state.day < 8) return;
+    var good = 0.025;
     if (chance(state, good)) {
       var ev = pickWeighted(state, eligible);
       if (ev) triggerEvent(state, ev);

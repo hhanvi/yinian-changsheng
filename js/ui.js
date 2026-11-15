@@ -23,6 +23,7 @@
     modalOpen: false,
     modalKey: '',
     paused: false,
+    autoPaused: false,
     speed: 1,
     acc: 0,
     timer: null,
@@ -371,10 +372,11 @@
     } else {
       inner = houseSvg(pal, { half: 22, peak: 38, wallTop: -23, lantern: b.type === 'dorm' });
     }
-    var level = b.level > 1 ? '<text class="b-level" x="0" y="-44" text-anchor="middle">' + '·'.repeat(b.level - 1) + '</text>' : '';
-    var selected = UI.selectedBuilding === b.id ? ' selected' : '';
-    return '<g class="building type-' + b.type + selected + '" transform="translate(' + p.x + ',' + p.y + ')" data-building="' + b.id + '">' +
-      '<title>' + h(def.name || '建筑') + ' · ' + (b.construction > 0 ? '营造中' : 'Lv.' + (b.level || 1)) + '</title>' +
+    var level = b.level > 1 && !opts.hideLevel ? '<text class="b-level" x="0" y="-44" text-anchor="middle">' + '·'.repeat(b.level - 1) + '</text>' : '';
+    var decorative = !!opts.decorative;
+    var selected = !decorative && UI.selectedBuilding === b.id ? ' selected' : '';
+    return '<g class="building type-' + b.type + selected + (decorative ? ' decorative' : '') + '" transform="translate(' + p.x + ',' + p.y + ')"' + (decorative ? ' aria-hidden="true"' : ' data-building="' + b.id + '"') + '>' +
+      (decorative ? '' : '<title>' + h(def.name || '建筑') + ' · ' + (b.construction > 0 ? '营造中' : 'Lv.' + (b.level || 1)) + '</title>') +
       inner + level + '</g>';
   }
 
@@ -447,13 +449,10 @@
         var t = rows[y][x];
         var p = iso(x, y);
         var cls = { G: 'grass', F: 'forest', M: 'mountain', W: 'water', S: 'spirit' }[t] || 'grass';
-        var buildable = t === 'G' && !E.buildingAt(state, x, y);
         var selected = UI.tile && UI.tile.x === x && UI.tile.y === y ? ' tile-selected' : '';
-        if (UI.buildType && buildable) cls += ' buildable';
         parts.push('<g class="tile tile-' + cls + selected + '" data-tile="' + x + ',' + y + '">' +
           '<polygon points="' + tilePoly(p.x, p.y, 0) + '"/>' +
           '<polygon class="tile-edge" points="' + tilePoly(p.x, p.y, 0) + '"/>' +
-          (UI.buildType && buildable ? '<text class="build-plus" x="' + p.x + '" y="' + (p.y + 3) + '" text-anchor="middle">＋</text>' : '') +
           '</g>');
       }
     }
@@ -717,7 +716,7 @@
     var html = '<header class="topbar">' +
       '<div class="brand"><button class="brand-seal" data-action="settings" aria-label="打开设置">念</button><div class="brand-text"><h1>' + h(D.TITLE) + '</h1><p>' + h(UI.game.sectName) + ' · ' + h(st.grade.name) + '</p></div></div>' +
       '<div class="topbar-right">' +
-      '<div class="date-block"><span class="season-glyph" style="color:' + d.season.color + '">' + d.season.glyph + '</span><div><b>' + d.month + '月' + d.dayOfMonth + '日</b><small>青历 ' + d.year + ' 年 · ' + w.name + '</small></div></div>' +
+      '<div class="date-block"><span class="season-glyph" style="color:' + d.season.color + '">' + d.season.glyph + '</span><div><b>' + d.month + '月' + d.dayOfMonth + '日</b><small>青历 ' + d.year + ' 年 · ' + w.name + (UI.paused ? (UI.autoPaused ? ' · 已暂停 · 安排中' : ' · 已暂停') : '') + '</small></div></div>' +
       '<div class="speed-control" role="group" aria-label="时间速度">' +
       '<button class="speed-btn ' + (UI.paused ? 'active' : '') + '" data-action="pause" aria-label="暂停">Ⅱ</button>' +
       '<button class="speed-btn ' + (!UI.paused && UI.speed === 1 ? 'active' : '') + '" data-action="speed" data-value="1">1×</button>' +
@@ -789,7 +788,6 @@
     if (!UI.game) return;
     var st = stats();
     var d = date(UI.game);
-    var buildDef = UI.buildType ? D.BUILDINGS[UI.buildType] : null;
     var view = document.getElementById('view');
     var selected = UI.selectedBuilding ? E.buildingById(UI.game, UI.selectedBuilding) : null;
     var tasks = [];
@@ -809,7 +807,7 @@
     view.innerHTML = '<div class="sect-layout">' +
       '<section class="map-panel panel">' +
       '<div class="map-head"><div><p class="eyebrow">QINGYA MOUNTAIN</p><h2>' + h(UI.game.sectName) + ' · 山门舆图</h2></div><div class="map-head-right"><span class="weather-chip">' + h(weather().glyph) + ' · ' + h(d.season.full) + '</span><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span></div></div>' +
-      '<div class="map-frame ' + (UI.buildType ? 'build-mode' : '') + '" id="map-frame">' +
+      '<div class="map-frame" id="map-frame">' +
       mapSvg() +
       weatherLayer() +
       '<div class="map-plaque"><b>青崖山</b><span>云深不知处</span></div>' +
@@ -818,9 +816,8 @@
       '<button class="map-tool" data-action="map-zoom-out" aria-label="缩小">−</button>' +
       '<button class="map-tool" data-action="map-reset" aria-label="复位">回</button>' +
       '</div>' +
-      (UI.buildType && buildDef ? '<div class="build-banner"><span>' + seal(buildDef.glyph) + '<b>营造 · ' + h(buildDef.name) + '</b><small>在舆图上选择一块空地</small></span><button class="btn btn-ghost btn-sm" data-action="cancel-build">取消</button></div>' : '') +
       '</div>' +
-      '<div class="map-foot"><div class="map-legend"><span>' + dot('#8f6a43') + '宗门建筑</span><span>' + dot('#4e7c78') + '内门弟子</span><span>' + dot('#b08a4a') + '外门弟子</span><span>' + dot('#7fa3a2') + '水泽</span><span>' + dot('#b9d6c6') + '灵脉</span></div><span class="map-hint">' + (UI.buildType ? '点击发光的空地放置建筑' : '点击建筑或弟子查看详情') + '</span></div>' +
+      '<div class="map-foot"><div class="map-legend"><span>' + dot('#8f6a43') + '宗门建筑</span><span>' + dot('#4e7c78') + '内门弟子</span><span>' + dot('#b08a4a') + '外门弟子</span><span>' + dot('#7fa3a2') + '水泽</span><span>' + dot('#b9d6c6') + '灵脉</span></div><span class="map-hint">点击建筑或弟子查看详情</span></div>' +
       '</section>' +
 
       '<aside class="side-column">' +
@@ -932,6 +929,27 @@
     return list.length;
   }
 
+  function jobChoices(d) {
+    var jobs = E.eligibleJobs(UI.game, d).slice();
+    if (d.job) {
+      var cur = E.buildingById(UI.game, d.job);
+      if (cur && !jobs.some(function (b) { return b.id === cur.id; })) jobs.unshift(cur);
+    }
+    return jobs;
+  }
+
+  function jobSelectHtml(d, extraClass) {
+    if (d.missionId) return '<span class="job-quick job-quick-static ' + (extraClass || '') + '"><span>差事</span><b>在外历练</b></span>';
+    var options = '<option value="">待命</option><option value="auto">自动安排</option>';
+    jobChoices(d).forEach(function (b) {
+      var def = E.def(b);
+      var full = b.workers.length >= E.slotsOf(b) && d.job !== b.id;
+      options += '<option value="' + b.id + '" ' + (d.job === b.id ? 'selected' : '') + (full ? ' disabled' : '') + '>' +
+        h(def.name) + ' · ' + b.workers.length + '/' + E.slotsOf(b) + '</option>';
+    });
+    return '<label class="job-quick ' + (extraClass || '') + '"><span>差事</span><select class="job-select" data-action="assign-select" data-id="' + d.id + '" aria-label="为' + h(d.name) + '安排差事">' + options + '</select></label>';
+  }
+
   function discipleCard(d) {
     var pr = E.stageProgress(d);
     var need = pr.need;
@@ -942,7 +960,7 @@
       '<div class="dc-head">' + avatarSvg(d, 58) + '<div class="dc-title"><div><h3>' + h(d.name) + (d.id === UI.game.playerId ? ' <span class="badge badge-player">掌门</span>' : '') + '</h3><span class="dc-role">' + roleBadge(d) + '<span class="realm-text">' + h(stage(d)) + '</span></span></div><small>' + h(d.origin) + ' · ' + d.age + '岁</small></div></div>' +
       '<div class="dc-cult"><div class="dc-cult-head"><span>' + (isBottleneck ? '瓶颈' : '修为') + '</span><b>' + Math.floor(d.exp) + ' / ' + need + '</b></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') + '</div>' +
       '<div class="dc-needs">' + needBar('心境', d.mood, d.mood < 30 ? 'bar-red' : 'bar-jade') + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + '</div>' +
-      '<div class="dc-meta"><span class="job-chip">' + h(jobName) + '</span><span class="power-chip">战力 ' + fmt(E.power(d, UI.game)) + '</span></div>' +
+      '<div class="dc-meta">' + jobSelectHtml(d, 'dc-job') + '<span class="power-chip">战力 ' + fmt(E.power(d, UI.game)) + '</span></div>' +
       '<div class="dc-traits">' + (d.traits || []).slice(0, 3).map(function (t) { return '<span class="mini-chip">' + h(D.TRAITS[t] ? D.TRAITS[t].name : t) + '</span>'; }).join('') + '</div>' +
       '<div class="dc-actions"><button class="btn btn-ghost btn-sm" data-action="open-disciple" data-id="' + d.id + '">详情</button>' +
       (isBottleneck ? '<button class="btn btn-primary btn-sm" data-action="breakthrough" data-id="' + d.id + '">助其突破</button>' : '') +
@@ -957,13 +975,6 @@
     var pr = E.stageProgress(d);
     var isBottleneck = d.exp >= pr.need && d.realm < 9;
     var job = d.job ? E.buildingById(UI.game, d.job) : null;
-    var eligible = E.eligibleJobs(UI.game, d);
-    var jobHtml = eligible.length ? eligible.map(function (b) {
-      var def = E.def(b);
-      var disabled = b.workers.length >= E.slotsOf(b) || (d.job === b.id);
-      return '<button class="job-option ' + (d.job === b.id ? 'active' : '') + '" data-action="assign" data-id="' + d.id + '" data-building="' + b.id + '" ' + (disabled ? 'disabled' : '') + '>' +
-        '<span class="job-option-glyph">' + def.glyph + '</span><span><b>' + h(def.name) + '</b><small>' + b.workers.length + ' / ' + E.slotsOf(b) + ' 人</small></span></button>';
-    }).join('') : '<p class="muted">暂时没有适合的差事。先造一座静室、灵田或丹房。</p>';
     var pillHtml = Object.keys(D.PILLS).filter(function (p) { return (UI.game.pills[p] || 0) > 0; }).map(function (p) {
       var pill = D.PILLS[p];
       return '<button class="pill-use" data-action="use-pill" data-id="' + d.id + '" data-pill="' + p + '">' + seal(pill.glyph) + '<span><b>' + h(pill.name) + '</b><small>' + h(pill.desc) + '</small></span><em>×' + UI.game.pills[p] + '</em></button>';
@@ -972,6 +983,7 @@
     var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + (d.id === UI.game.playerId ? 'SECT MASTER' : d.role === 'inner' ? 'INNER DISCIPLE' : 'OUTER DISCIPLE') + '</p><h2>' + h(d.name) + (d.id === UI.game.playerId ? ' · 掌门' : '') + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
       '<div class="detail-body">' +
       '<div class="detail-bio">' + h(d.bio || '山中岁月长，来日方长。') + '</div>' +
+      (UI.settings.autoPause ? '<div class="pause-note">时间已暂停 · 可安心安排差事</div>' : '') +
       '<div class="detail-cols">' +
       '<div class="detail-col"><h4>修行</h4><div class="detail-big">' + h(stage(d)) + '<small>' + Math.floor(d.exp) + ' / ' + pr.need + ' 修为</small></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') +
       '<div class="stat-pills"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>战力 <b>' + fmt(E.power(d, UI.game)) + '</b></span><span>灵根 <b>' + h(rootOf(d).name) + '</b></span><span title="' + h(E.techniqueOf(d).desc) + '">功法 <b>' + h(E.techniqueOf(d).name) + '</b></span></div>' +
@@ -984,11 +996,14 @@
       '</div></div>' +
       relationSection(d) +
       '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (d.missionId ? '在外历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
-      (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-grid">' + jobHtml + '</div>' + (d.job ? '<button class="btn btn-ghost btn-sm" data-action="assign" data-id="' + d.id + '" data-building="">解除差事</button>' : '')) +
+      (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job') +
+        '<button class="btn btn-jade btn-sm" data-action="auto-assign" data-id="' + d.id + '">自动安排</button>' +
+        (d.job ? '<button class="btn btn-ghost btn-sm" data-action="assign" data-id="' + d.id + '" data-building="">解除差事</button>' : '') + '</div>' +
+        '<p class="job-hint">选好差事即刻生效；安排时山门时间会自动暂停。</p>') +
       '</div>' +
       '<div class="detail-section"><h4>丹药</h4>' + (pillHtml || '<p class="muted">丹房里还没有存药。灵草可在药圃种植，丹方在参研中解锁。</p>') + '</div>' +
       '</div>';
-    openModal(content, { class: 'detail-modal', dismissible: true });
+    openModal(content, { class: 'detail-modal', dismissible: true, key: 'disciple:' + d.id });
   }
 
   function relationSection(d) {
@@ -1016,7 +1031,7 @@
     });
     var st = stats();
     document.getElementById('view').innerHTML = '<div class="view-page">' +
-      '<div class="view-head"><div><p class="eyebrow">BUILD &amp; ARRANGE</p><h2>营造山门</h2><p>木石有价，风水无形。建筑挨在哪里，也是一门学问。</p></div><div class="view-head-actions"><span class="capacity-note">空地 ' + countBuildable() + ' · 风水 ' + st.fengShui + ' ' + st.fsGrade + '</span></div></div>' +
+      '<div class="view-head"><div><p class="eyebrow">BUILD &amp; ARRANGE</p><h2>营造山门</h2><p>选好图样，山门会依山势自动择地开工。木石有价，风水无形。</p></div><div class="view-head-actions"><span class="capacity-note">空地 ' + countBuildable() + ' · 风水 ' + st.fengShui + ' ' + st.fsGrade + '</span></div></div>' +
       '<div class="build-layout"><section><div class="cat-tabs">' + cats.map(function (c) {
         return '<button class="filter-chip ' + (UI.buildCat === c.id ? 'active' : '') + '" data-action="build-cat" data-value="' + c.id + '">' + c.name + '</button>';
       }).join('') + '</div><div class="build-grid">' + list.map(buildingCatalogCard).join('') + '</div></section>' +
@@ -1041,7 +1056,7 @@
       '<p class="build-desc">' + h(def.desc) + '</p>' +
       '<div class="build-effect">' + h(def.effect) + '</div>' +
       '<div class="cost-row">' + cost + '</div>' +
-      '<button class="btn ' + (locked || uniqueBlocked || !can ? 'btn-ghost' : 'btn-primary') + ' btn-sm btn-block" data-action="select-build" data-type="' + def.id + '" ' + (locked || uniqueBlocked ? 'disabled' : '') + '>' + (locked ? '需参研' : uniqueBlocked ? '已建成' : '选择位置') + '</button>' +
+      '<button class="btn ' + (locked || uniqueBlocked || !can ? 'btn-ghost' : 'btn-primary') + ' btn-sm btn-block" data-action="select-build" data-type="' + def.id + '" ' + (locked || uniqueBlocked || !can ? 'disabled' : '') + '>' + (locked ? '需参研' : uniqueBlocked ? '已建成' : !can ? '材料不足' : '择地营造') + '</button>' +
       '</article>';
   }
 
@@ -1152,6 +1167,11 @@
   /* ------------------------------------------------------------------ */
   function openModal(content, opts) {
     opts = opts || {};
+    if (UI.settings.autoPause && UI.game && !UI.paused) {
+      UI.paused = true;
+      UI.autoPaused = true;
+      renderHeader();
+    }
     var root = document.getElementById('modal-root');
     root.innerHTML = '<div class="modal-backdrop" data-action="' + (opts.dismissible === false ? 'noop' : 'backdrop-close') + '"><div class="modal ' + (opts.class || '') + '" role="dialog" aria-modal="true">' + content + '</div></div>';
     document.body.classList.add('modal-open');
@@ -1168,6 +1188,10 @@
     document.body.classList.remove('modal-open');
     UI.modalOpen = false;
     UI.modalKey = '';
+    if (UI.autoPaused) {
+      UI.autoPaused = false;
+      UI.paused = false;
+    }
     if (UI.game) { renderHeader(); renderNav(); if (UI.tab !== 'sect' || !UI.game.pendingEvent) renderView(); }
   }
 
@@ -1283,12 +1307,13 @@
     var base = def.upgradeCost || def.cost || {};
     Object.keys(base).forEach(function (k) { cost[k] = Math.round(base[k] * (1 + ((b.level || 1) - 1) * 0.8)); });
     var content = '<div class="modal-head building-modal-head"><div><p class="eyebrow">BUILDING</p><h2>' + h(def.name) + ' · Lv.' + b.level + '</h2><p class="detail-sub">' + h(def.effect) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
-      '<div class="building-portrait">' + buildingPortrait(b.type, b.level) + '</div>' +
+      '<div class="building-portrait" aria-hidden="true">' + buildingPortrait(b.type, b.level) + '</div>' +
       '<div class="detail-body"><p class="detail-bio">' + h(def.desc) + '</p>' +
+      (UI.settings.autoPause ? '<div class="pause-note">时间已暂停 · 可安心安排人手</div>' : '') +
       '<div class="building-facts"><span>灵气 <b>+' + ((def.aura || 0) * b.level) + '</b></span><span>风水 <b>+' + ((def.fengShui || 0) * b.level) + '</b></span><span>当值 <b>' + workers.length + ' / ' + E.slotsOf(b) + '</b></span>' + (def.capacity ? '<span>可住 <b>' + E.capacityOf(b) + '</b></span>' : '') + '</div>' +
       '<div class="detail-section"><div class="detail-section-head"><h4>当值弟子</h4><span>' + (b.construction > 0 ? '营造中 · 还需 ' + Math.ceil(b.construction) + ' 日' : '') + '</span></div>' +
       (b.construction > 0 ? '<p class="muted">建筑尚未落成。</p>' : (workers.length ? '<div class="worker-list">' + workers.map(function (d) { return '<button class="worker-chip" data-action="open-disciple" data-id="' + d.id + '">' + avatarSvg(d, 30) + '<span>' + h(d.name) + '</span><em>查看</em></button>'; }).join('') + '</div>' : '<p class="muted">此处还没有人当值。</p>')) +
-      (b.construction <= 0 && E.slotsOf(b) > 0 && workers.length < E.slotsOf(b) ? '<div class="assign-list"><h4>可安排</h4>' + eligible.filter(function (d) { return b.workers.indexOf(d.id) < 0; }).map(function (d) { return '<button class="assign-chip" data-action="assign" data-id="' + d.id + '" data-building="' + b.id + '">' + avatarSvg(d, 28) + '<span>' + h(d.name) + '</span><small>' + h(stage(d)) + '</small></button>'; }).join('') + '</div>' : '') +
+      (b.construction <= 0 && E.slotsOf(b) > 0 && workers.length < E.slotsOf(b) ? '<button class="btn btn-jade btn-sm" data-action="auto-staff" data-id="' + b.id + '">一键补位 · 自动挑选空闲弟子</button><div class="assign-list"><h4>也可手动安排</h4>' + eligible.filter(function (d) { return b.workers.indexOf(d.id) < 0; }).map(function (d) { return '<button class="assign-chip" data-action="assign" data-id="' + d.id + '" data-building="' + b.id + '">' + avatarSvg(d, 28) + '<span>' + h(d.name) + '</span><small>' + h(stage(d)) + '</small></button>'; }).join('') + '</div>' : '') +
       '</div>' +
       (b.type === 'alchemy' ? '<div class="detail-section"><div class="detail-section-head"><h4>当前丹方</h4></div><div class="recipe-options inline">' + D.RECIPES.filter(function (r) { return E.recipeUnlocked(UI.game, r); }).map(function (r) { return '<button class="recipe-option ' + (b.recipe === r.id ? 'active' : '') + '" data-action="recipe" data-building="' + b.id + '" data-recipe="' + r.id + '">' + D.PILLS[r.out].glyph + ' ' + h(r.name) + '</button>'; }).join('') + '</div></div>' : '') +
       '<div class="building-actions">' +
@@ -1298,9 +1323,109 @@
     openModal(content, { class: 'building-modal-wrap', dismissible: true, key: 'building:' + id });
   }
 
+  function portraitExtras(type) {
+    if (type === 'alchemy') {
+      return '<g class="portrait-extra"><circle cx="45" cy="4" r="16" fill="#d89a4c" opacity=".18"/><circle cx="45" cy="4" r="7" fill="#d89a4c" opacity=".22"/><path d="M38,-10 q8 -12 2 -22 q-5 -9 3 -16" stroke="#cbb9a0" stroke-width="2" fill="none" opacity=".5"/><path d="M54,-6 q-6 -10 1 -18" stroke="#cbb9a0" stroke-width="1.4" fill="none" opacity=".4"/><circle cx="39" cy="-16" r="1.2" fill="#e4b168" opacity=".8"/><circle cx="49" cy="-28" r="1" fill="#e4b168" opacity=".7"/></g>';
+    }
+    if (type === 'array') {
+      return '<g class="portrait-extra"><ellipse cx="0" cy="18" rx="86" ry="24" fill="none" stroke="#8bc0ae" stroke-width="1" stroke-dasharray="5 6" opacity=".6"/><ellipse cx="0" cy="18" rx="62" ry="17" fill="none" stroke="#b8d5c7" stroke-width=".8" opacity=".55"/><path d="M-78,18 L-70,12 M78,18 L70,12 M0,-7 L0,3" stroke="#e7d7a2" stroke-width="1.2" opacity=".8"/><circle cx="-78" cy="18" r="2" fill="#e7d7a2"/><circle cx="78" cy="18" r="2" fill="#e7d7a2"/><circle cx="0" cy="-7" r="2" fill="#e7d7a2"/></g>';
+    }
+    if (type === 'library') {
+      return '<g class="portrait-extra"><g transform="translate(86,-30) rotate(-8)"><rect x="-14" y="-8" width="28" height="16" rx="1" fill="#efe2c5" opacity=".9"/><path d="M-14,-8 L0,-13 L14,-8 M-14,8 L0,3 L14,8" fill="none" stroke="#b08a4a" stroke-width=".8" opacity=".8"/></g><g transform="translate(104,-58) rotate(9)"><rect x="-10" y="-6" width="20" height="12" rx="1" fill="#efe2c5" opacity=".75"/></g><circle cx="98" cy="-44" r="1.4" fill="#d8b96b" opacity=".8"/></g>';
+    }
+    if (type === 'shrine') {
+      return '<g class="portrait-extra"><path d="M-38,-2 q-6 -16 2 -30 q5 -9 0 -18" stroke="#d8c9ae" stroke-width="2" fill="none" opacity=".45"/><path d="M38,-2 q6 -14 -1 -27 q-5 -9 1 -16" stroke="#d8c9ae" stroke-width="1.6" fill="none" opacity=".4"/><path d="M-48,0 L-48,-26 M48,0 L48,-26" stroke="#8f4a3b" stroke-width="1.2" opacity=".8"/><circle cx="-48" cy="-27" r="3" fill="#d8b96b" opacity=".8"/><circle cx="48" cy="-27" r="3" fill="#d8b96b" opacity=".8"/></g>';
+    }
+    if (type === 'farm' || type === 'herb') {
+      return '<g class="portrait-extra"><path d="M-92,20 q8 -7 16 0 M-70,24 q7 -6 14 0 M-46,26 q7 -6 14 0 M54,24 q7 -6 14 0 M78,20 q8 -7 16 0" stroke="#7d9a5f" stroke-width="1.4" fill="none" opacity=".7"/><circle cx="-74" cy="8" r="1.5" fill="#d6df92" opacity=".85"/><circle cx="-30" cy="14" r="1.2" fill="#d6df92" opacity=".7"/><circle cx="62" cy="10" r="1.4" fill="#d6df92" opacity=".75"/></g>';
+    }
+    if (type === 'well') {
+      return '<g class="portrait-extra"><ellipse cx="0" cy="28" rx="44" ry="10" fill="none" stroke="#8bc0ae" stroke-width="1" opacity=".45"/><ellipse cx="0" cy="28" rx="28" ry="6" fill="none" stroke="#b8d5c7" stroke-width=".8" opacity=".4"/><path d="M-20,26 q20 4 40 0" stroke="#d5e4de" stroke-width="1" fill="none" opacity=".5"/></g>';
+    }
+    if (type === 'gate') {
+      return '<g class="portrait-extra"><circle cx="-48" cy="-4" r="4" fill="#d8b96b" opacity=".85"/><circle cx="48" cy="-4" r="4" fill="#d8b96b" opacity=".85"/><path d="M-48,-8 L-48,-16 M48,-8 L48,-16" stroke="#8f4a3b" stroke-width="1.2"/><path d="M-53,-1 q5 5 10 0 M43,-1 q5 5 10 0" stroke="#a33b2a" stroke-width="1.4" fill="none" opacity=".6"/></g>';
+    }
+    if (type === 'dorm' || type === 'kitchen' || type === 'guest' || type === 'infirmary') {
+      return '<g class="portrait-extra"><path d="M-44,-6 L-44,-16 M44,-6 L44,-16" stroke="#8f4a3b" stroke-width="1" opacity=".85"/><circle cx="-44" cy="-4" r="3" fill="#d8b96b" opacity=".9"/><circle cx="44" cy="-4" r="3" fill="#d8b96b" opacity=".9"/><path d="M-48,0 q4 4 8 0 M40,0 q4 4 8 0" stroke="#a33b2a" stroke-width="1.2" fill="none" opacity=".6"/><path d="M-58,26 q8 -4 16 0 M42,26 q8 -4 16 0" stroke="#7d6a4e" stroke-width=".9" fill="none" opacity=".45"/></g>';
+    }
+    if (type === 'pavilion') {
+      return '<g class="portrait-extra"><path d="M-64,-36 q6 -5 12 0 q6 -5 12 0 M54,-48 q5 -4 10 0 q5 -4 10 0" stroke="#5e6577" stroke-width="1.2" fill="none" opacity=".55"/><path d="M-44,26 q22 8 44 0" stroke="#8f6a43" stroke-width="1" fill="none" opacity=".4"/></g>';
+    }
+    return '';
+  }
+
   function buildingPortrait(type, level) {
     var fake = { id: 'portrait', type: type, x: 0, y: 0, level: level || 1, construction: 0, workers: [] };
-    return '<svg viewBox="0 0 260 190" class="portrait-svg"><circle cx="204" cy="44" r="36" fill="#f5edda" opacity=".55"/><path d="M-10 150 Q60 122 130 144 T270 132 L270 200 L-10 200 Z" fill="#b8c4ac" opacity=".35"/><g transform="translate(130,150) scale(1.72)">' + buildingGroup(fake, { noIso: true }) + '</g></svg>';
+    var def = D.BUILDINGS[type] || { name: '屋舍' };
+    var uid = 'bp' + (UI.uid++);
+    var lv = level || 1;
+    var chars = '青崖山营造图'.split('').map(function (ch, i) {
+      return '<tspan x="606" dy="' + (i ? 18 : 0) + '">' + ch + '</tspan>';
+    }).join('');
+    return '<svg viewBox="0 0 640 300" class="portrait-svg" preserveAspectRatio="xMidYMid slice" role="img" aria-label="' + h(def.name) + '营造图">' +
+      '<defs>' +
+      '<linearGradient id="' + uid + 'sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--portrait-sky-a)"/><stop offset=".7" style="stop-color:var(--portrait-sky-b)"/><stop offset="1" style="stop-color:var(--portrait-ground)"/></linearGradient>' +
+      '<linearGradient id="' + uid + 'mist" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--portrait-mist);stop-opacity:0"/><stop offset=".5" style="stop-color:var(--portrait-mist);stop-opacity:.55"/><stop offset="1" style="stop-color:var(--portrait-mist);stop-opacity:0"/></linearGradient>' +
+      '<radialGradient id="' + uid + 'sun"><stop offset="0" stop-color="#fff9e5"/><stop offset=".55" stop-color="#f3e1b8" stop-opacity=".7"/><stop offset="1" stop-color="#f3e1b8" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="' + uid + 'path" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--portrait-stone)" stop-opacity=".9"/><stop offset="1" stop-color="var(--portrait-stone)" stop-opacity=".42"/></linearGradient>' +
+      '<radialGradient id="' + uid + 'vig" cx=".5" cy=".46" r=".74"><stop offset=".58" stop-color="var(--ink)" stop-opacity="0"/><stop offset="1" stop-color="var(--ink)" stop-opacity=".24"/></radialGradient>' +
+      '<filter id="' + uid + 'blur"><feGaussianBlur stdDeviation="6"/></filter>' +
+      '</defs>' +
+      '<rect width="640" height="300" fill="url(#' + uid + 'sky)"/>' +
+      '<circle cx="508" cy="66" r="78" fill="url(#' + uid + 'sun)" opacity=".85"/>' +
+      '<circle cx="508" cy="66" r="27" fill="#f9edcf" opacity=".82"/>' +
+      '<circle cx="508" cy="66" r="45" fill="none" stroke="#e2cfa1" stroke-width=".7" opacity=".32"/>' +
+      '<path d="M382 82 q7 -6 14 0 q7 -6 14 0 M416 96 q5 -4 10 0 q5 -4 10 0" stroke="var(--portrait-near)" stroke-width="1.1" fill="none" opacity=".42"/>' +
+      '<path d="M-30 190 L26 146 L58 162 L94 108 L124 136 L164 92 L198 142 L238 118 L282 164 L326 136 L366 172 L410 124 L446 158 L486 112 L520 150 L560 132 L602 174 L670 146 L670 300 L-30 300 Z" fill="var(--portrait-far)" opacity=".42"/>' +
+      '<path d="M282 300 L334 214 L364 230 L408 150 L432 174 L458 112 L486 154 L516 138 L552 190 L590 172 L640 232 L670 218 L670 300 Z" fill="var(--portrait-mid)" opacity=".58"/>' +
+      '<path d="M282 300 L334 214 L364 230 L408 150 L432 174 L458 112 L486 154 L516 138 L552 190 L590 172 L640 232 L670 218" stroke="var(--portrait-near)" stroke-width="1.8" fill="none" opacity=".22"/>' +
+      '<path d="M410 218 Q424 194 432 176 M456 206 Q466 178 480 156 M516 204 Q528 180 540 160" stroke="var(--portrait-near)" stroke-width="1" fill="none" opacity=".16"/>' +
+      '<path d="M458 112 L486 154 L470 190 L444 210 L420 248 L458 248 L486 196 L516 160 L486 154 Z" fill="var(--portrait-far)" opacity=".28"/>' +
+      '<g filter="url(#' + uid + 'blur)" opacity=".46"><ellipse cx="160" cy="262" rx="150" ry="18" fill="url(#' + uid + 'mist)"/><ellipse cx="486" cy="270" rx="184" ry="22" fill="url(#' + uid + 'mist)"/><ellipse cx="328" cy="238" rx="124" ry="12" fill="url(#' + uid + 'mist)"/></g>' +
+      '<ellipse cx="320" cy="190" rx="146" ry="58" fill="#fff8e9" opacity=".14" filter="url(#' + uid + 'blur)"/>' +
+      '<g transform="translate(320,180)">' +
+      '<path d="M-180 0 Q-142 -16 -104 -12 Q-56 -22 -8 -16 Q40 -24 88 -14 Q136 -18 180 0 Q142 18 96 24 Q38 34 -10 30 Q-58 36 -106 24 Q-144 16 -180 0 Z" fill="var(--portrait-ground)" opacity=".98"/>' +
+      '<path d="M-180 0 Q-142 18 -104 24 Q-56 36 -8 30 Q38 34 96 24 Q142 18 180 0 L154 32 Q116 54 70 64 Q24 74 -22 68 Q-66 62 -112 48 Q-148 34 -180 0 Z" fill="var(--portrait-near)" opacity=".95"/>' +
+      '<path d="M-152 24 Q-104 44 -56 54 Q0 68 56 52 Q104 40 152 28 L128 52 Q82 72 26 82 Q-28 86 -76 68 Q-116 52 -152 24 Z" fill="var(--portrait-stone-dark)" opacity=".62"/>' +
+      '<path d="M-94 64 Q-66 80 -18 88 Q28 92 76 76 L58 92 Q20 104 -18 102 Q-56 96 -94 78 Z" fill="var(--portrait-near)" opacity=".82"/>' +
+      '<path d="M-180 0 Q-132 -14 -84 -10 Q-38 -20 8 -14 Q56 -20 104 -10 Q142 -14 180 0" stroke="var(--portrait-ground)" stroke-width="7" fill="none" opacity=".55"/>' +
+      '<path d="M-58 96 q-4 12 3 20 M38 100 q5 10 -2 18 M-2 104 q-3 9 2 15" stroke="var(--portrait-near)" stroke-width="1.6" fill="none" opacity=".55"/>' +
+      '<path d="M-198 146 q18 -10 34 0 M190 132 q16 -8 30 2" stroke="var(--portrait-mist)" stroke-width="1" fill="none" opacity=".35"/>' +
+      '<path d="M-132 34 q40 18 80 24 M-70 64 q30 8 60 6 M16 66 q34 -4 66 -18" stroke="var(--portrait-stone-dark)" stroke-width=".9" fill="none" opacity=".28"/>' +
+      '</g>' +
+      '<g filter="url(#' + uid + 'blur)" opacity=".66"><ellipse cx="206" cy="272" rx="96" ry="18" fill="var(--portrait-mist)"/><ellipse cx="430" cy="282" rx="112" ry="22" fill="var(--portrait-mist)"/></g>' +
+      '<ellipse cx="320" cy="288" rx="162" ry="16" fill="var(--portrait-stone-dark)" opacity=".18" filter="url(#' + uid + 'blur)"/>' +
+      '<g opacity=".72"><path d="M468 190 C464 214 460 238 454 268 L470 268 C472 240 474 216 480 190 Z" fill="#a9c9bc"/><path d="M470 194 C467 218 464 240 460 262" stroke="#edf6ee" stroke-width="1.8" fill="none" opacity=".7"/><g filter="url(#' + uid + 'blur)" opacity=".7"><ellipse cx="462" cy="270" rx="32" ry="9" fill="#d9ebe0"/></g></g>' +
+      '<g filter="url(#' + uid + 'blur)" opacity=".5"><ellipse cx="196" cy="286" rx="74" ry="12" fill="var(--portrait-mist)"/><ellipse cx="452" cy="292" rx="92" ry="15" fill="var(--portrait-mist)"/></g>' +
+      '<g fill="var(--portrait-near)" opacity=".9">' +
+      '<g transform="translate(158,182) scale(1.0)"><rect x="-2.6" y="-20" width="5.2" height="22" fill="#5b4734"/><path d="M0,-96 L-27,-44 L-12,-44 L-38,-10 L-15,-10 L-45,28 L45,28 L15,-10 L38,-10 L12,-44 L27,-44 Z"/></g>' +
+      '<g transform="translate(478,184) scale(.82)"><rect x="-2.6" y="-20" width="5.2" height="22" fill="#5b4734"/><path d="M0,-96 L-27,-44 L-12,-44 L-38,-10 L-15,-10 L-45,28 L45,28 L15,-10 L38,-10 L12,-44 L27,-44 Z"/></g>' +
+      '</g>' +
+      '<g transform="translate(252,210)" fill="var(--portrait-near)" opacity=".72"><circle cx="0" cy="-17" r="3.2"/><path d="M0,-14 q-5 7 -3 15 h6 q2 -8 -3 -15"/><path d="M-3,-2 l-3 8 M3,-2 l3 8" stroke="var(--portrait-near)" stroke-width="1.1" fill="none"/><path d="M6,-20 l0 22" stroke="var(--portrait-near)" stroke-width="1" fill="none"/></g>' +
+      '<g fill="var(--portrait-stone-dark)" opacity=".55"><path d="M104 228 l12 -8 l10 8 l-10 8 Z"/><path d="M522 216 l14 -9 l12 10 l-12 8 Z"/><path d="M76 252 l9 -6 l8 7 l-8 6 Z"/></g>' +
+      '<g transform="translate(320,190)">' +
+      '<ellipse cx="0" cy="24" rx="174" ry="34" fill="rgba(35,30,20,.22)"/>' +
+      '<polygon points="0,-20 164,19 0,58 -164,19" fill="var(--portrait-stone-dark)" opacity=".55"/>' +
+      '<polygon points="0,-10 140,18 0,48 -140,18" fill="var(--portrait-stone)" opacity=".96"/>' +
+      '<path d="M-140,18 L0,48 L140,18" stroke="var(--portrait-stone-dark)" stroke-width="1" fill="none" opacity=".42"/>' +
+      '<path d="M-98,12 L-24,32 M-62,6 L16,30 M-26,2 L54,26" stroke="var(--portrait-stone-dark)" stroke-width=".8" fill="none" opacity=".22"/>' +
+      '<path d="M-58,48 L-42,48 L-34,70 L-67,70 Z M36,48 L52,48 L60,70 L27,70 Z" fill="var(--portrait-stone-dark)" opacity=".62"/>' +
+      '<path d="M-7,54 L7,54 L9,76 L-9,76 Z" fill="var(--portrait-stone-dark)" opacity=".5"/>' +
+      '<g stroke="var(--portrait-stone-dark)" stroke-width="1.3" fill="none" opacity=".52">' +
+      '<path d="M-150,10 L-150,-6 M-126,15 L-126,-1 M-102,20 L-102,4 M102,20 L102,4 M126,15 L126,-1 M150,10 L150,-6"/>' +
+      '<path d="M-150,-6 Q-126,-11 -102,4 M102,4 Q126,-11 150,-6"/>' +
+      '</g>' +
+      '<g transform="translate(0,-18) scale(2.5)">' + buildingGroup(fake, { noIso: true, decorative: true, hideLevel: true }) + '</g>' +
+      '<g transform="translate(0,-2) scale(2.0)">' + portraitExtras(type) + '</g>' +
+      '</g>' +
+      '<g transform="translate(246,208)"><rect x="-5" y="-3" width="10" height="4" fill="var(--portrait-stone-dark)" opacity=".75"/><rect x="-1.5" y="-10" width="3" height="8" fill="var(--portrait-stone-dark)" opacity=".7"/><rect x="-4" y="-17" width="8" height="7" rx="1" fill="var(--portrait-stone)" opacity=".9"/><path d="M-6,-17 L6,-17 L4,-21 L-4,-21 Z" fill="var(--portrait-stone-dark)" opacity=".8"/><circle cx="0" cy="-13.5" r="1.5" fill="#e8c982" opacity=".95"/></g>' +
+      '<g transform="translate(394,210)"><rect x="-5" y="-3" width="10" height="4" fill="var(--portrait-stone-dark)" opacity=".75"/><rect x="-1.5" y="-10" width="3" height="8" fill="var(--portrait-stone-dark)" opacity=".7"/><rect x="-4" y="-17" width="8" height="7" rx="1" fill="var(--portrait-stone)" opacity=".9"/><path d="M-6,-17 L6,-17 L4,-21 L-4,-21 Z" fill="var(--portrait-stone-dark)" opacity=".8"/><circle cx="0" cy="-13.5" r="1.5" fill="#e8c982" opacity=".95"/></g>' +
+      '<g fill="var(--portrait-near)" opacity=".55"><path d="M32 292 l4 -14 h-2 l4 -10 l4 10 h-2 l4 14 z"/><path d="M54 296 l3 -11 h-2 l3 -8 l3 8 h-2 l3 11 z"/><path d="M582 294 l4 -13 h-2 l4 -10 l4 10 h-2 l4 13 z"/></g>' +
+      '<g fill="var(--portrait-stone-dark)" opacity=".32"><ellipse cx="92" cy="288" rx="22" ry="7"/><ellipse cx="540" cy="290" rx="26" ry="8"/></g>' +
+      '<rect width="640" height="300" fill="url(#' + uid + 'vig)" opacity=".8" pointer-events="none"/>' +
+      '<g class="portrait-inscription" fill="var(--ink)" opacity=".72" font-family="Noto Serif SC, Songti SC, STSong, serif" font-size="12.5" letter-spacing="2"><text x="606" y="52">' + chars + '</text></g>' +
+      '<g class="portrait-seal" transform="translate(590,222)"><rect width="27" height="27" rx="2" fill="var(--cinnabar)" opacity=".88"/><text x="13.5" y="11" text-anchor="middle" font-size="8" fill="#f8efd7">一</text><text x="13.5" y="21" text-anchor="middle" font-size="8" fill="#f8efd7">念</text></g>' +
+      '</svg>';
   }
 
   function openLog() {
@@ -1396,6 +1521,12 @@
   /* ------------------------------------------------------------------ */
   /* 事件处理                                                           */
   /* ------------------------------------------------------------------ */
+  function refreshAssignmentModal() {
+    var key = UI.modalKey || '';
+    if (key.indexOf('disciple:') === 0) openDisciple(key.slice(9));
+    else if (key.indexOf('building:') === 0) openBuilding(key.slice(9));
+  }
+
   function handleAction(el) {
     var action = el.getAttribute('data-action');
     if (!action || action === 'noop') return;
@@ -1419,12 +1550,17 @@
         else if (el.getAttribute('data-building')) { openBuilding(el.getAttribute('data-building')); }
         else { UI.tab = tab || 'sect'; renderAll(); }
         break;
-      case 'pause': UI.paused = !UI.paused; renderHeader(); break;
-      case 'speed': UI.paused = false; UI.speed = Number(value); UI.settings.speed = UI.speed; saveSettings(); renderHeader(); break;
+      case 'pause':
+        UI.paused = !UI.paused;
+        if (!UI.paused) UI.autoPaused = false;
+        renderHeader();
+        break;
+      case 'speed': UI.paused = false; UI.autoPaused = false; UI.speed = Number(value); UI.settings.speed = UI.speed; saveSettings(); renderHeader(); break;
       case 'speed-cycle': {
         var seq = [1, 2, 4];
         UI.speed = seq[(seq.indexOf(UI.speed) + 1) % seq.length];
         UI.paused = false;
+        UI.autoPaused = false;
         UI.settings.speed = UI.speed;
         saveSettings();
         renderHeader();
@@ -1436,12 +1572,54 @@
       case 'close-modal': closeModal(); break;
       case 'backdrop-close': if (el === el.parentElement || el.classList.contains('modal-backdrop')) closeModal(); break;
       case 'filter': UI.filter = value; renderDisciples(); break;
-      case 'open-disciple': closeModal(); UI.tab = 'disciples'; renderAll(); openDisciple(id); break;
-      case 'open-building': closeModal(); UI.tab = 'sect'; renderAll(); openBuilding(id); break;
-      case 'assign':
+      case 'open-disciple': UI.tab = 'disciples'; renderAll(); openDisciple(id); break;
+      case 'open-building': UI.tab = 'sect'; renderAll(); openBuilding(id); break;
+      case 'assign': {
         var res = E.assign(UI.game, id, el.getAttribute('data-building') || null);
-        if (!res.ok) toast(res.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); openDisciple(id); }
+        if (!res.ok) toast(res.msg, 'warn');
+        else {
+          saveNow();
+          renderAll();
+          refreshAssignmentModal();
+          toast(res.msg || '差事已定。', 'good');
+        }
         break;
+      }
+      case 'assign-select': {
+        var picked = el.value;
+        var ar = picked === 'auto' ? E.autoAssign(UI.game, id) : E.assign(UI.game, id, picked || null);
+        if (!UI.modalOpen && UI.autoPaused) { UI.autoPaused = false; UI.paused = false; }
+        if (!ar.ok) toast(ar.msg, 'warn');
+        else {
+          saveNow();
+          renderAll();
+          refreshAssignmentModal();
+          toast(ar.msg || '差事已定。', 'good');
+        }
+        break;
+      }
+      case 'auto-assign': {
+        var aa = E.autoAssign(UI.game, id);
+        if (!aa.ok) toast(aa.msg, 'warn');
+        else {
+          saveNow();
+          renderAll();
+          refreshAssignmentModal();
+          toast(aa.msg || '已择定差事。', 'good');
+        }
+        break;
+      }
+      case 'auto-staff': {
+        var as = E.autoStaff(UI.game, id);
+        if (!as.ok) toast(as.msg, 'warn');
+        else {
+          saveNow();
+          renderAll();
+          refreshAssignmentModal();
+          toast(as.count ? '补入 ' + as.count + ' 名弟子。' : '暂无空闲弟子可补位。', as.count ? 'good' : 'warn');
+        }
+        break;
+      }
       case 'promote':
         var pr = E.promote(UI.game, id);
         if (!pr.ok) toast(pr.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); toast('晋升内门。', 'good'); }
@@ -1459,12 +1637,20 @@
         if (!up.ok) toast(up.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); openDisciple(id); toast('药力化开。', 'good'); }
         break;
       case 'build-cat': UI.buildCat = value; renderBuild(); break;
-      case 'select-build':
+      case 'select-build': {
         var buildType = el.getAttribute('data-type') || value;
         var def = D.BUILDINGS[buildType];
         if (!def) break;
-        UI.buildType = buildType; UI.tab = 'sect'; closeModal(); renderAll(); toast('在舆图上选择空地营造' + def.name + '。');
+        var built = E.buildAuto(UI.game, buildType);
+        if (!built.ok) { toast(built.msg, 'warn'); break; }
+        UI.buildType = null;
+        UI.tab = 'sect';
+        UI.selectedBuilding = built.building.id;
+        saveNow();
+        renderAll();
+        toast(def.name + '已在山中择地开工。', 'good');
         break;
+      }
       case 'cancel-build': UI.buildType = null; renderAll(); break;
       case 'upgrade':
         var upg = E.upgrade(UI.game, id);
@@ -1588,10 +1774,63 @@
       if (UI.suppressClick) { UI.suppressClick = false; return; }
       var el = e.target.closest('[data-action]');
       if (!el) return;
+      if (el.tagName === 'SELECT' && el.getAttribute('data-action') === 'assign-select') return;
       if (el.getAttribute('data-action') === 'backdrop-close' && e.target !== el) return;
       if (el.disabled) return;
       handleAction(el);
     });
+
+    document.addEventListener('change', function (e) {
+      var el = e.target.closest('[data-action="assign-select"]');
+      if (el) handleAction(el);
+    });
+
+    document.addEventListener('focusin', function (e) {
+      var el = e.target.closest('[data-action="assign-select"]');
+      if (!el || UI.modalOpen) return;
+      if (UI.settings.autoPause && UI.game && !UI.paused) {
+        UI.paused = true;
+        UI.autoPaused = true;
+        renderHeader();
+      }
+    });
+
+    document.addEventListener('focusout', function (e) {
+      var el = e.target.closest('[data-action="assign-select"]');
+      if (!el) return;
+      setTimeout(function () {
+        var active = document.activeElement;
+        var stillPicking = active && active.closest && active.closest('[data-action="assign-select"]');
+        if (UI.autoPaused && !UI.modalOpen && !stillPicking) {
+          UI.autoPaused = false;
+          UI.paused = false;
+          renderHeader();
+        }
+      }, 100);
+    });
+
+    var lastTap = 0;
+    var lastTapX = 0;
+    var lastTapY = 0;
+    document.addEventListener('touchend', function (e) {
+      if (!e.changedTouches || !e.changedTouches.length) return;
+      var target = e.target;
+      if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      var touch = e.changedTouches[0];
+      var now = Date.now();
+      if (now - lastTap < 320 && Math.abs(touch.clientX - lastTapX) < 30 && Math.abs(touch.clientY - lastTapY) < 30) {
+        e.preventDefault();
+      }
+      lastTap = now;
+      lastTapX = touch.clientX;
+      lastTapY = touch.clientY;
+    }, { passive: false });
+
+    document.addEventListener('dblclick', function (e) {
+      var target = e.target;
+      if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      e.preventDefault();
+    }, { passive: false });
 
     // 地图点击：建筑 / 弟子 / 空地
     document.addEventListener('click', function (e) {
@@ -1599,30 +1838,17 @@
       var frame = e.target.closest('#map-frame');
       if (!frame) return;
       var bEl = e.target.closest('[data-building]');
-      if (bEl) { if (!UI.buildType) openBuilding(bEl.getAttribute('data-building')); return; }
+      if (bEl) { openBuilding(bEl.getAttribute('data-building')); return; }
       var dEl = e.target.closest('[data-disciple]');
-      if (dEl) { if (!UI.buildType) openDisciple(dEl.getAttribute('data-disciple')); return; }
+      if (dEl) { openDisciple(dEl.getAttribute('data-disciple')); return; }
       var tEl = e.target.closest('[data-tile]');
       if (!tEl) return;
       var xy = tEl.getAttribute('data-tile').split(',').map(Number);
-      if (UI.buildType) {
-        var res = E.build(UI.game, UI.buildType, xy[0], xy[1]);
-        if (!res.ok) toast(res.msg, 'warn');
-        else {
-          var builtType = UI.buildType;
-          UI.buildType = null;
-          saveNow();
-          renderAll();
-          toast((D.BUILDINGS[builtType] || {}).name + '开始营造。', 'good');
-          openBuilding(res.building.id);
-        }
-      } else {
-        UI.tile = { x: xy[0], y: xy[1] };
-        var terrain = E.terrainAt(UI.game, xy[0], xy[1]);
-        var names = { G: '草地', F: '林地', M: '山岩', W: '水泽', S: '灵脉' };
-        toast((E.buildingAt(UI.game, xy[0], xy[1]) ? '此处已有建筑' : '此处是' + (names[terrain] || '空地') + (E.isBuildable(UI.game, xy[0], xy[1]) ? '，可以营造' : '')) + '。');
-        renderSect();
-      }
+      UI.tile = { x: xy[0], y: xy[1] };
+      var terrain = E.terrainAt(UI.game, xy[0], xy[1]);
+      var names = { G: '草地', F: '林地', M: '山岩', W: '水泽', S: '灵脉' };
+      toast((E.buildingAt(UI.game, xy[0], xy[1]) ? '此处已有建筑' : '此处是' + (names[terrain] || '空地') + (E.isBuildable(UI.game, xy[0], xy[1]) ? '，可以营造' : '')) + '。');
+      renderSect();
     });
 
     document.addEventListener('keydown', function (e) {

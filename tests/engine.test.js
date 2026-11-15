@@ -307,4 +307,52 @@ test('旧版存档版本不会被当成新版载入', function () {
   assert.strictEqual(E.importState(json), null);
 });
 
+test('营造会自动择地、扣费并落在空地上', function () {
+  var s = newState();
+  var wood = s.resources.wood;
+  var res = E.buildAuto(s, 'dorm');
+  assert.ok(res.ok);
+  assert.ok(res.building.x >= 0 && res.building.y >= 0);
+  assert.strictEqual(E.buildingAt(s, res.building.x, res.building.y), res.building);
+  assert.ok(s.resources.wood < wood);
+  assert.ok(res.spot);
+});
+
+test('自动安排会为弟子选择合适差事', function () {
+  var s = newState();
+  var d = E.outerDisciples(s)[0];
+  E.assign(s, d.id, null);
+  var recommended = E.recommendedJob(s, d);
+  assert.ok(recommended);
+  var res = E.autoAssign(s, d.id);
+  assert.ok(res.ok);
+  assert.strictEqual(d.job, recommended.id);
+});
+
+test('一键补位会填满建筑的空缺', function () {
+  var s = newState();
+  s.disciples.forEach(function (d) { d.job = null; });
+  s.buildings.forEach(function (b) { b.workers = []; });
+  var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
+  var res = E.autoStaff(s, farm.id);
+  assert.ok(res.ok);
+  assert.ok(res.count > 0);
+  assert.ok(farm.workers.length > 0);
+});
+
+test('山门事件之间有冷却，不会连日弹窗', function () {
+  var s = newState();
+  s.day = 4;
+  clearPending(s);
+  E.tick(s);
+  assert.strictEqual(s.pendingEvent, 'first_caravan');
+  assert.strictEqual(s.lastEventDay, s.day);
+  E.closeEvent(s);
+  s.flags.evt_first_caravan = true;
+  var day = s.day;
+  for (var i = 0; i < 13; i++) { E.tick(s); clearPending(s); }
+  assert.strictEqual(s.day, day + 13);
+  assert.strictEqual(s.pendingEvent, null);
+});
+
 console.log('\n' + passed + ' 项测试通过。\n');
