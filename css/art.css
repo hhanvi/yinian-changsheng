@@ -108,6 +108,11 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .scenery-panel { padding-bottom: 6px; }
 .scenery-view { position: relative; isolation: isolate; overflow: hidden; cursor: default; pointer-events: none; user-select: none; background: #c4d3c4; aspect-ratio: 3 / 2; }
 .scenery-svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+.scenery-view { border-color: #a99870; box-shadow: inset 0 0 0 5px rgba(246, 239, 215, .62), inset 0 0 0 6px rgba(125, 111, 75, .26); }
+.scenery-svg { filter: saturate(.84) contrast(.96); }
+.scenery-svg .sc-peak path, .scenery-svg .sc-far path { stroke-linejoin: round; }
+.scenery-svg .sc-buildings { filter: drop-shadow(0 4px 5px rgba(30, 46, 34, .2)); }
+.scenery-svg .sc-clouds { opacity: .8; }
 .scenery-fallback { width: 100%; height: 100%; background: linear-gradient(180deg, #efe6cf, #a9c0ae); }
 .scenery-view::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(255, 248, 225, .08), transparent 34%, rgba(18, 38, 30, .16)); }
 .scenery-view::after { box-shadow: inset 0 0 45px rgba(26, 45, 34, .09); z-index: 2; pointer-events: none; }
@@ -120,14 +125,17 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 [data-theme="night"] .scenery-view::before { background: linear-gradient(180deg, rgba(18, 40, 48, .36), rgba(12, 30, 28, .14) 48%, rgba(6, 20, 18, .48)); }
 [data-theme="night"] .scenery-view::after { box-shadow: inset 0 0 60px rgba(7, 22, 18, .22); }
 .sc-mobile { display: none; }
+.sc-mobile-sun { display: none; }
 .scenery-svg .sc-mist-a { animation: scMistA 34s ease-in-out infinite alternate; }
 .scenery-svg .sc-mist-b { animation: scMistB 42s ease-in-out infinite alternate; }
+.scenery-svg .sc-mist-c { animation: scMistB 50s ease-in-out infinite alternate-reverse; }
 .scenery-svg .sc-cloud-a { animation: scCloudA 46s ease-in-out infinite alternate; }
 .scenery-svg .sc-cloud-b { animation: scCloudB 54s ease-in-out infinite alternate; }
 .scenery-svg .sc-cloud-c { animation: scCloudA 38s ease-in-out infinite alternate-reverse; }
 .scenery-svg .sc-crane { animation: scCrane 20s ease-in-out infinite; }
 .scenery-svg .sc-water { animation: scWater 6s ease-in-out infinite; }
 .scenery-svg .sc-lantern { animation: scLantern 4.5s ease-in-out infinite; }
+.scenery-svg .sc-mobile-sun { animation: scLantern 9s ease-in-out infinite; }
 .scenery-svg .sc-petal { animation: scPetal 13s linear infinite; }
 @keyframes scMistA { from { transform: translateX(-16px); } to { transform: translateX(18px); } }
 @keyframes scMistB { from { transform: translateX(14px); } to { transform: translateX(-18px); } }
@@ -140,6 +148,7 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 @media (max-width: 720px) {
   .scenery-view { aspect-ratio: 4 / 5; }
   .sc-mobile { display: inline; }
+  .sc-mobile-sun { display: inline; }
   .scenery-inscription { top: 14px; left: 14px; gap: 7px; }
   .scenery-inscription b { font-size: 13px; }
   .scenery-inscription span { font-size: 8px; }
