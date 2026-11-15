@@ -30,8 +30,6 @@
     lastSaveDay: 0,
     settings: { theme: 'paper', speed: 1, autoPause: true },
     create: { origin: 'orphan', root: 'water', sectName: '青崖宗', playerName: '沈未央' },
-    mapZoom: 1,
-    tile: null,
     uid: 0,
     suppressClick: false,
     saveFailed: false,
@@ -40,7 +38,6 @@
   };
 
   var TILE_W = 64, TILE_H = 32, ORIGIN_X = 326, ORIGIN_Y = 98;
-  var MAP_BASE = { x: 8, y: 24, w: 764, h: 468 };
 
   /* ------------------------------------------------------------------ */
   /* 工具                                                               */
@@ -538,137 +535,11 @@
     return out;
   }
 
-  function mapSvg() {
-    var state = UI.game;
-    if (!state) return '';
-    var zoom = UI.mapZoom || 1;
-    var vw = MAP_BASE.w / zoom, vh = MAP_BASE.h / zoom;
-    var vx = MAP_BASE.x + (MAP_BASE.w - vw) / 2, vy = MAP_BASE.y + (MAP_BASE.h - vh) / 2;
-    var viewBox = vx + ' ' + vy + ' ' + vw + ' ' + vh;
-    var parts = [];
-    parts.push('<svg class="map-svg" viewBox="' + viewBox + '" role="img" aria-label="青崖山宗门舆图">');
-    parts.push('<defs>' +
-      '<linearGradient id="mapSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--map-sky-a)"/><stop offset="1" style="stop-color:var(--map-sky-b)"/></linearGradient>' +
-      '<radialGradient id="spiritGlow"><stop offset="0" stop-color="#b9e0cf" stop-opacity=".8"/><stop offset="1" stop-color="#b9e0cf" stop-opacity="0"/></radialGradient>' +
-      '<radialGradient id="sunGlow"><stop offset="0" stop-color="var(--map-sun)" stop-opacity=".5"/><stop offset="1" stop-color="var(--map-sun)" stop-opacity="0"/></radialGradient>' +
-      '<filter id="softGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
-      '<filter id="terrainSoft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.6"/></filter>' +
-      '</defs>');
-    parts.push('<rect x="0" y="0" width="780" height="520" fill="url(#mapSky)"/>');
-    parts.push('<image class="map-distant-painting" href="assets/qingya-panorama.jpg" x="0" y="-5" width="780" height="520" preserveAspectRatio="xMidYMid slice" opacity=".45"/>');
-    // 晕日与流云
-    parts.push('<g class="map-sun"><circle cx="618" cy="84" r="58" fill="url(#sunGlow)"/><circle cx="618" cy="84" r="21" fill="var(--map-sun)"/><circle cx="618" cy="84" r="21" fill="none" stroke="#fff" stroke-opacity=".35"/></g>');
-    parts.push('<g class="mist-band"><ellipse cx="230" cy="152" rx="210" ry="17" fill="#f4f2e4" opacity=".14"/><ellipse cx="530" cy="188" rx="265" ry="21" fill="#f4f2e4" opacity=".11"/><ellipse cx="390" cy="118" rx="150" ry="12" fill="#f4f2e4" opacity=".12"/></g>');
-    // 远山
-    parts.push('<path d="M-40 500 L-40 145 Q55 85 120 165 L180 82 250 190 330 144 410 225 530 120 615 205 750 95 830 165 830 500 Z" fill="var(--map-hill-a)" opacity=".24"/>');
-    parts.push('<path d="M-40 500 L-40 220 Q90 150 170 232 L260 158 340 246 445 196 560 262 680 178 830 248 830 500 Z" fill="var(--map-hill-b)" opacity=".3"/>');
-    // 石台侧壁与投影，把舆图托成云海中的一座山台。
-    parts.push('<ellipse cx="390" cy="402" rx="310" ry="28" fill="#183e38" opacity=".13"/>');
-    parts.push('<path d="M38 242 L326 98 742 306 454 450 38 242 L38 267 454 480 742 336 742 306 454 450 38 242" fill="#406659" stroke="#57766a" stroke-width="1"/>');
-    parts.push('<path d="M38 252 L454 462 742 318 M90 284 l15 30 M180 330 l8 29 M280 382 l12 30 M390 438 l10 28 M530 422 l-4 28 M630 372 l-8 24" fill="none" stroke="#96b6a1" stroke-width="2" opacity=".4"/>');
-    parts.push('<path d="M52 262 L454 472 730 332" fill="none" stroke="#a8c4a6" stroke-width="1.4" opacity=".16"/>');
-    parts.push('<path d="M64 276 L454 482 720 342" fill="none" stroke="#22423a" stroke-width="1.2" opacity=".2"/>');
-    parts.push('<g class="cliff-moss" stroke="#5c7e58" stroke-width="1.3" fill="none" opacity=".55"><path d="M120 292 q2 12 -3 19 M250 356 q3 13 -2 22 M470 462 q1 10 -3 16 M590 398 q2 12 -2 19 M680 350 q2 9 -1 14"/></g>');
-    // 有机地形：等距圆角菱形按地块绘制，柔边相接、每格细微色差，去掉方块网格的硬边感
-    var rows = state.map || [];
-    var colOf = { G: 'var(--tile-grass)', F: 'var(--tile-forest)', M: 'var(--tile-mountain)', W: 'var(--tile-water)', S: 'var(--tile-spirit)' };
-    terrainRegions(rows).forEach(function (r) {
-      var col = colOf[r.type] || 'var(--tile-grass)';
-      var cells = r.cells.map(function (c) {
-        var p = iso(c.x, c.y);
-        var seed = hashStr(c.x + ':' + c.y + ':' + state.sectName);
-        var vary = (seed % 3) - 1; // -1 暗 / 0 不变 / 1 亮
-        var pts = tilePoly(p.x, p.y, 4);
-        var hi = tilePoly(p.x, p.y, 13);
-        return '<polygon class="terrain-cell" points="' + pts + '" fill="' + col + '" stroke="' + col + '" stroke-width="7" stroke-linejoin="round"/>' +
-          '<polygon class="terrain-hi" points="' + hi + '" fill="#ffffff" opacity=".05"/>' +
-          (vary === 0 ? '' : '<polygon class="terrain-vary" points="' + pts + '" fill="' + (vary > 0 ? '#ffffff' : '#0d0d0d') + '" opacity=".04"/>');
-      }).join('');
-      parts.push('<g class="terrain terrain-' + (r.type || 'G') + '" filter="url(#terrainSoft)">' + cells + '</g>');
-    });
-    // 自然特征：水岸浮沫、莲叶、灵脉萤光、水光与林下暗影
-    rows.forEach(function (row, y) {
-      row.forEach(function (t, x) {
-        var p = iso(x, y);
-        var seed = hashStr(x + ':' + y + ':' + state.sectName);
-        if (t === 'W') {
-          parts.push('<ellipse cx="' + p.x + '" cy="' + p.y + '" rx="24" ry="10" fill="#eef5e4" opacity=".09"/>');
-          var dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-          for (var di = 0; di < dirs.length; di++) {
-            var nx = x + dirs[di][0], ny = y + dirs[di][1];
-            var nt = rows[ny] ? rows[ny][nx] : null;
-            if (nt && nt !== 'W') {
-              var q = iso(nx, ny);
-              parts.push(foamArc(p.x, p.y, q.x, q.y, seed + nx * 13 + ny * 7));
-            }
-          }
-          if (seed % 3 === 0) parts.push(lotusSvg(p.x + 7, p.y + 2, seed));
-        } else if (t === 'S') {
-          parts.push(motesSvg(p.x, p.y, seed));
-          parts.push('<circle class="shimmer" cx="' + p.x + '" cy="' + p.y + '" r="16" fill="none" stroke="#e7f2da" stroke-width="1" opacity=".3"/>');
-        } else if (t === 'F') {
-          parts.push('<ellipse cx="' + p.x + '" cy="' + (p.y + 3) + '" rx="18" ry="7" fill="#31473a" opacity=".15"/>');
-        }
-      });
-    });
-    // 小径
-    (state.paths || []).forEach(function (pt) {
-      var p = iso(pt[0], pt[1]);
-      parts.push('<polygon class="path-tile" points="' + tilePoly(p.x, p.y, 5) + '"/>');
-      parts.push('<circle cx="' + (p.x - 7) + '" cy="' + (p.y + 1) + '" r="1" fill="#9e8a68" opacity=".55"/><circle cx="' + (p.x + 5) + '" cy="' + (p.y + 3) + '" r="1" fill="#9e8a68" opacity=".4"/>');
-    });
-    // 装饰
-    rows.forEach(function (row, yy) {
-      row.forEach(function (t, xx) {
-        var p = iso(xx, yy);
-        var seed = hashStr(xx + ':' + yy + ':' + state.sectName);
-        if (t === 'F') {
-          parts.push(treeSvg(p.x - 8, p.y + 2, seed, 0.9 + (seed % 4) * 0.08));
-          if (seed % 3 === 0) parts.push(treeSvg(p.x + 10, p.y - 3, seed + 7, 0.7));
-        } else if (t === 'M') {
-          parts.push(rockSvg(p.x, p.y, seed, 0.9 + (seed % 3) * 0.12));
-        } else if (t === 'W') {
-          parts.push(waterRipple(p.x, p.y, seed));
-        } else if (t === 'S') {
-          parts.push('<circle cx="' + p.x + '" cy="' + p.y + '" r="26" fill="url(#spiritGlow)"/><circle cx="' + p.x + '" cy="' + p.y + '" r="9" fill="none" stroke="#8bc0ae" stroke-width="1" stroke-dasharray="3 4" class="array-ring"/>');
-        } else if (t === 'G' && seed % 9 === 0 && !E.buildingAt(state, xx, yy)) {
-          parts.push('<path d="M' + (p.x - 4) + ' ' + (p.y + 2) + ' q3 -5 6 0" stroke="#7e9a5e" stroke-width="1" fill="none" opacity=".7"/><circle cx="' + (p.x + 2) + '" cy="' + (p.y - 1) + '" r="1.3" fill="#d6c27c" opacity=".8"/>');
-        }
-      });
-    });
-    // 山门小景
-    (D.DECOR || []).forEach(function (item) { parts.push(decorSvg(item)); });
-    // 建筑（按等距深度排序）
-    state.buildings.slice().sort(function (a, b) { return (a.x + a.y) - (b.x + b.y) || a.x - b.x; }).forEach(function (b) {
-      parts.push(buildingGroup(b));
-    });
-    // 弟子
-    state.disciples.filter(function (d) { return !d.dead && !d.missionId; }).sort(function (a, b) {
-      return unitPosition(a).y - unitPosition(b).y;
-    }).forEach(function (d) { parts.push(tokenSvg(d)); });
-    // 崖沿草蔓与飞瀑
-    [[38, 242, 454, 450], [454, 450, 742, 306]].forEach(function (edge, ei) {
-      var n = 10;
-      for (var i = 1; i < n; i++) {
-        var tt = i / n;
-        var ex = edge[0] + (edge[2] - edge[0]) * tt;
-        var ey = edge[1] + (edge[3] - edge[1]) * tt;
-        var sd = hashStr('rim' + ei + ':' + i);
-        parts.push('<path d="M' + ex.toFixed(1) + ' ' + (ey + 3).toFixed(1) + ' q1 5 -2 8 M' + (ex + 3).toFixed(1) + ' ' + (ey + 3).toFixed(1) + ' q2 4 0 7" stroke="#6e8a5e" stroke-width="1.2" fill="none" opacity=".7"/>');
-        if (sd % 3 === 0) parts.push('<path d="M' + (ex - 2).toFixed(1) + ' ' + (ey + 4).toFixed(1) + ' q-1 9 2 15" stroke="#5c7650" stroke-width="1" fill="none" opacity=".45"/>');
-      }
-    });
-    parts.push('<g class="waterfall">' +
-      '<path class="waterfall-strand" d="M446 450 C 450 464 444 478 449 490" stroke="#cfe4dc" stroke-width="4" fill="none" opacity=".45"/>' +
-      '<path class="waterfall-strand" style="animation-delay:-1.2s" d="M454 452 C 457 466 451 479 456 490" stroke="#eef6ef" stroke-width="2" fill="none" opacity=".32"/>' +
-      '<ellipse cx="451" cy="489" rx="24" ry="6" fill="#f2f5e9" opacity=".32"/>' +
-      '<ellipse cx="438" cy="486" rx="11" ry="4.5" fill="#f2f5e9" opacity=".22"/>' +
-      '</g>');
-    // 云影
-    parts.push('<g class="cloud-shadows"><ellipse cx="180" cy="250" rx="130" ry="34" fill="#fff" opacity=".13"/><ellipse cx="560" cy="345" rx="160" ry="40" fill="#fff" opacity=".11"/><ellipse cx="420" cy="130" rx="100" ry="24" fill="#fff" opacity=".1"/></g>');
-    parts.push('<g class="mountain-cranes" fill="none" stroke="#31554e" stroke-width="1.3" opacity=".65"><path d="M560 100 q5 -5 10 0 q5 -5 10 0 M590 88 q4 -4 8 0 q4 -4 8 0 M610 108 q3 -3 6 0 q3 -3 6 0"/></g>');
-    parts.push('</svg>');
-    return parts.join('');
+  function renderScenery() {
+    if (window.SectScenery && typeof window.SectScenery.render === 'function') {
+      return window.SectScenery.render();
+    }
+    return '<div class="scenery-fallback" aria-hidden="true"></div>';
   }
 
   function weatherLayer() {
@@ -1006,19 +877,12 @@
     var topDisciples = E.aliveDisciples(UI.game).sort(function (a, b) { return E.power(b, UI.game) - E.power(a, UI.game); }).slice(0, 3);
 
     view.innerHTML = '<section class="scenic-header" aria-label="青崖山水"><div class="scenic-copy"><span class="scenic-kicker">青崖山 · ' + d.season.full + '</span><h2>山有归处，心向长生。</h2><p>' + h(d.season.desc) + '</p><button class="scenic-link" data-action="open-journey">展开宗门长卷 <span>七章仙途 ›</span></button></div><div class="scenic-seal" aria-hidden="true">青崖<br>山居</div></section><div class="sect-layout"><div class="mountain-column">' +
-      '<section class="map-panel panel">' +
-      '<div class="map-head"><div><p class="eyebrow">一山一门 · 一草一木</p><h2>' + h(UI.game.sectName) + ' · 山门舆图</h2></div><div class="map-head-right"><span class="weather-chip">' + h(weather().glyph) + ' · ' + h(d.season.full) + '</span><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span></div></div>' +
-      '<div class="map-frame" id="map-frame" data-season="' + d.season.key + '">' +
-      mapSvg() +
-      weatherLayer() +
-      '<div class="map-plaque"><b>青崖山</b><span>云深不知处</span></div>' +
-      '<div class="map-side-tools">' +
-      '<button class="map-tool" data-action="map-zoom-in" aria-label="放大">＋</button>' +
-      '<button class="map-tool" data-action="map-zoom-out" aria-label="缩小">−</button>' +
-      '<button class="map-tool" data-action="map-reset" aria-label="复位">回</button>' +
-      '</div>' +
-      '</div>' +
-      '<div class="map-foot"><div class="map-legend"><span>' + dot('#8f6a43') + '宗门建筑</span><span>' + dot('#4e7c78') + '内门弟子</span><span>' + dot('#b08a4a') + '外门弟子</span><span>' + dot('#7fa3a2') + '水泽</span><span>' + dot('#b9d6c6') + '灵脉</span></div><span class="map-hint">舆图仅供观览，建筑与弟子请从下方页签查看</span></div>' +
+      '<section class="map-panel panel scenery-panel">' +
+      '<div class="map-head"><div><p class="eyebrow">松风入院 · 云水为邻</p><h2>' + h(UI.game.sectName) + ' · 山门绘卷</h2></div><div class="map-head-right"><span class="weather-chip">' + h(weather().glyph) + ' · ' + h(d.season.full) + '</span><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span></div></div>' +
+      '<div class="map-frame scenery-view" id="sect-scenery" data-season="' + d.season.key + '">' +
+      renderScenery() + weatherLayer() +
+      '<div class="scenery-inscription" aria-hidden="true"><b>青崖山居</b><span>一径入烟霞</span></div>' +
+      '</div><p class="scenery-foot">山中日月长，松下听风来。</p>' +
       '</section><div class="activity-grid">' + journeyCard() + commissionCard() + '</div></div>' +
 
       '<aside class="side-column">' +
@@ -2014,9 +1878,6 @@
         else { UI.game = st; E.save(st, true); closeModal(); document.getElementById('app').innerHTML = shellHtml(); renderAll(); startTimer(); toast('存档已导入。', 'good'); }
         break;
       case 'theme': applyTheme(value); saveSettings(); openSettings(); break;
-      case 'map-zoom-in': UI.mapZoom = Math.min(1.65, UI.mapZoom + 0.15); renderSect(); break;
-      case 'map-zoom-out': UI.mapZoom = Math.max(0.8, UI.mapZoom - 0.15); renderSect(); break;
-      case 'map-reset': UI.mapZoom = 1; renderSect(); break;
       case 'event-choice':
         var evr = E.resolveEvent(UI.game, Number(el.getAttribute('data-index')));
         if (!evr.ok) toast(evr.msg, 'warn'); else { saveNow(); UI.modalKey = ''; renderAll(); syncAutoModals(); }
