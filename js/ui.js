@@ -33,7 +33,10 @@
     mapZoom: 1,
     tile: null,
     uid: 0,
-    suppressClick: false
+    suppressClick: false,
+    saveFailed: false,
+    remoteSaveNotified: false,
+    lastSaveAt: 0
   };
 
   var TILE_W = 64, TILE_H = 32, ORIGIN_X = 326, ORIGIN_Y = 98;
@@ -132,10 +135,25 @@
     if (meta) meta.setAttribute('content', UI.settings.theme === 'night' ? '#121817' : '#e8dec9');
   }
 
-  function saveNow() {
-    if (!UI.game) return;
-    E.save(UI.game);
-    UI.lastSaveDay = UI.game.day;
+  function saveNow(force) {
+    if (!UI.game) return false;
+    var ok = E.save(UI.game, !!force);
+    if (ok) {
+      UI.lastSaveDay = UI.game.day;
+      UI.lastSaveAt = UI.game.lastSaved || Date.now();
+      UI.saveFailed = false;
+      return true;
+    }
+    if (!UI.saveFailed) {
+      UI.saveFailed = true;
+      var msg = E.lastSaveError === 'stale'
+        ? '另一页面已写入更新的存档，本页暂停保存。请刷新后再继续。'
+        : E.lastSaveError === 'quota'
+          ? '浏览器存储空间不足，存档失败。请先导出存档备份。'
+          : '浏览器存储不可用，存档失败。请先导出存档备份。';
+      toast(msg, 'warn');
+    }
+    return false;
   }
 
   /* ------------------------------------------------------------------ */
@@ -1073,27 +1091,38 @@
   }
 
   function missionView() {
+    var day = UI.game.day;
+    var orders = UI.game.missionOrders || [];
+    var activeOrderIds = {};
     var active = UI.game.missions.map(function (m) {
       var region = D.MISSIONS.find(function (x) { return x.id === m.missionId; });
       var names = m.discipleIds.map(function (id) { var d = E.discipleById(UI.game, id); return d ? d.name : '？'; }).join('、');
-      return '<div class="active-mission panel"><div class="panel-head"><h3>' + h(region ? region.name : '在外') + '</h3><span class="badge badge-warn">' + m.daysLeft + ' 日</span></div><p>' + h(names) + ' 正在外历练。</p><div class="bar bar-gold"><i style="width:' + pct((m.days - m.daysLeft) / m.days * 100) + '%"></i></div><small class="muted">队伍战力 ' + fmt(m.teamPower) + '</small></div>';
+      if (m.orderId) activeOrderIds[m.orderId] = true;
+      return '<div class="active-mission panel' + (m.orderId ? ' is-order' : '') + '"><div class="panel-head"><h3>' + h(region ? region.name : '在外') + '</h3><div class="mission-head-badges">' + (m.orderId ? '<span class="badge badge-inner">常驻</span>' : '') + '<span class="badge badge-warn">' + m.daysLeft + ' 日</span></div></div><p>' + h(names) + ' 正在外历练。</p><div class="bar bar-gold"><i style="width:' + pct((m.days - m.daysLeft) / m.days * 100) + '%"></i></div><div class="mission-active-foot"><small class="muted">队伍战力 ' + fmt(m.teamPower) + '</small>' + (m.orderId ? '<button class="btn btn-ghost btn-sm" data-action="mission-stop" data-id="' + m.orderId + '">停止常驻</button>' : '') + '</div></div>';
+    }).join('');
+    var waiting = orders.filter(function (o) { return !activeOrderIds[o.id]; }).map(function (o) {
+      var region = D.MISSIONS.find(function (x) { return x.id === o.missionId; });
+      var names = o.discipleIds.map(function (id) { var d = E.discipleById(UI.game, id); return d ? d.name : '？'; }).join('、');
+      var wait = Math.max(0, (o.nextTryDay || day) - day);
+      return '<div class="mission-order panel"><div class="panel-head"><h3>' + h(region ? region.name : '在外') + ' · 常驻</h3><span class="badge badge-inner">休整中</span></div><p>' + h(names) + (wait > 0 ? ' 将在 ' + wait + ' 日后再次启程。' : ' 今日将再次启程。') + '</p><small class="muted">' + (o.lastError ? h(o.lastError) : '归来休整，补足干粮后自动再出发。') + '</small><div class="mission-order-actions"><button class="btn btn-ghost btn-sm" data-action="mission-stop" data-id="' + o.id + '">停止常驻</button></div></div>';
     }).join('');
     var cards = D.MISSIONS.map(function (m) {
       var reached = E.missionReachable(UI.game, m);
+      var order = orders.find(function (o) { return o.missionId === m.id; });
       var req = m.danger === 0 ? '外门可去' : '需内门 · ' + D.REALMS[m.minRealm].short;
       var reward = [];
       if (m.rewards.food) reward.push('食物');
       if (m.rewards.herbs) reward.push('灵草');
       if (m.rewards.stones) reward.push('灵石');
       if (m.rewards.pills) reward.push('丹药');
-      return '<article class="mission-card panel ' + (!reached ? 'locked' : '') + '">' +
+      return '<article class="mission-card panel ' + (!reached ? 'locked' : '') + (order ? ' repeating' : '') + '">' +
         '<div class="mission-card-head"><span class="mission-glyph" style="--mc:' + m.color + '">' + m.glyph + '</span><div><h3>' + h(m.name) + '</h3><small>危险 ' + '◆'.repeat(m.danger || 0) + (m.danger ? '' : '◇') + ' · ' + m.days + ' 日</small></div></div>' +
         '<p>' + h(m.desc) + '</p><div class="mission-req"><span>' + req + '</span><span>建议战力 ' + fmt(m.minPower || 0) + '</span></div>' +
-        '<div class="mission-reward">' + reward.map(function (r) { return '<span class="mini-chip">' + r + '</span>'; }).join('') + '</div>' +
-        '<button class="btn btn-ghost btn-sm btn-block" data-action="mission-open" data-id="' + m.id + '" ' + (!reached ? 'disabled' : '') + '>' + (reached ? '选择弟子' : '声望不足') + '</button>' +
+        '<div class="mission-reward">' + reward.map(function (r) { return '<span class="mini-chip">' + r + '</span>'; }).join('') + (order ? '<span class="mini-chip mini-chip-jade">常驻</span>' : '') + '</div>' +
+        '<button class="btn btn-ghost btn-sm btn-block" data-action="mission-open" data-id="' + m.id + '" ' + (!reached || order ? 'disabled' : '') + '>' + (order ? '常驻中' : reached ? '安排历练' : '声望不足') + '</button>' +
         '</article>';
     }).join('');
-    return '<div class="mission-layout">' + (active ? '<div class="active-missions">' + active + '</div>' : '') + '<div class="mission-grid">' + cards + '</div></div>';
+    return '<div class="mission-layout">' + (active ? '<div class="active-missions">' + active + '</div>' : '') + (waiting ? '<div class="mission-orders">' + waiting + '</div>' : '') + '<div class="mission-grid">' + cards + '</div></div>';
   }
 
   function alchemyView() {
@@ -1457,27 +1486,33 @@
   function openMissionPicker(missionId) {
     var m = D.MISSIONS.find(function (x) { return x.id === missionId; });
     if (!m) return;
-    UI.missionPick = { missionId: missionId, ids: [] };
+    UI.missionPick = { missionId: missionId, ids: [], repeat: true };
     openMissionModal();
   }
 
   function openMissionModal() {
     var m = D.MISSIONS.find(function (x) { return x.id === UI.missionPick.missionId; });
     if (!m) return;
-    var list = E.aliveDisciples(UI.game).filter(function (d) { return !d.missionId; });
+    var repeat = UI.missionPick.repeat !== false;
+    var reserved = {};
+    (UI.game.missionOrders || []).forEach(function (o) {
+      (o.discipleIds || []).forEach(function (id) { reserved[id] = true; });
+    });
+    var list = E.aliveDisciples(UI.game).filter(function (d) { return !d.missionId && !reserved[d.id]; });
     var selected = UI.missionPick.ids;
     var power = selected.reduce(function (s, id) { var d = E.discipleById(UI.game, id); return s + (d ? E.power(d, UI.game) : 0); }, 0);
     var content = '<div class="modal-head"><div><p class="eyebrow">EXPEDITION</p><h2>' + h(m.name) + '</h2><p class="detail-sub">危险 ' + (m.danger || 0) + ' · ' + m.days + ' 日 · 建议战力 ' + fmt(m.minPower || 0) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p class="detail-bio">' + h(m.desc) + ' ' + h(m.flavor) + '</p>' +
       '<div class="mission-pick-summary"><span>已选 <b>' + selected.length + '</b> / 2</span><span>队伍战力 <b>' + fmt(power) + '</b></span></div>' +
-      '<div class="pick-list">' + list.map(function (d) {
+      '<button class="repeat-toggle ' + (repeat ? 'active' : '') + '" data-action="mission-repeat"><span class="repeat-mark">∞</span><span><b>常驻历练</b><small>归来休整两日后自动再出发，直到你叫停。</small></span><em>' + (repeat ? '已开启' : '关闭') + '</em></button>' +
+      '<div class="pick-list">' + (list.length ? list.map(function (d) {
         var roleOk = m.allowOuter || d.role === 'inner';
         var realmOk = d.realm >= (m.minRealm || 0);
         var healthOk = d.health >= 30;
         var disabled = !roleOk || !realmOk || !healthOk || (selected.length >= 2 && selected.indexOf(d.id) < 0);
         var reason = !roleOk ? '需内门' : !realmOk ? '境界不足' : !healthOk ? '伤势未愈' : '';
         return '<button class="pick-card ' + (selected.indexOf(d.id) >= 0 ? 'active' : '') + '" data-action="mission-pick" data-id="' + d.id + '" ' + (disabled ? 'disabled' : '') + '>' + avatarSvg(d, 38) + '<span><b>' + h(d.name) + '</b><small>' + roleBadge(d) + ' ' + h(stage(d)) + ' · 战力 ' + fmt(E.power(d, UI.game)) + (reason ? ' · ' + reason : '') + '</small></span><em>' + (selected.indexOf(d.id) >= 0 ? '✓' : '') + '</em></button>';
-      }).join('') + '</div>' +
-      '<div class="modal-actions"><button class="btn btn-ghost" data-action="close-modal">再想想</button><button class="btn btn-primary" data-action="launch-mission" ' + (selected.length ? '' : 'disabled') + '>启程 · 食物 ' + (3 * selected.length) + '</button></div></div>';
+      }).join('') : '<p class="muted mission-empty">暂无空闲弟子。常驻队伍归来休整时也会留在此处。</p>') + '</div>' +
+      '<div class="modal-actions"><button class="btn btn-ghost" data-action="close-modal">再想想</button><button class="btn btn-primary" data-action="launch-mission" ' + (selected.length ? '' : 'disabled') + '>' + (repeat ? '常驻启程' : '启程') + ' · 食物 ' + (3 * selected.length) + '</button></div></div>';
     openModal(content, { class: 'mission-modal-wrap', dismissible: true, key: 'mission:' + m.id });
   }
 
@@ -1512,7 +1547,7 @@
 
   function afterTick() {
     if (!UI.game) return;
-    if (UI.game.day - UI.lastSaveDay >= 7) saveNow();
+    if (UI.game.day !== UI.lastSaveDay) saveNow();
     renderAll();
     if (UI.game.ending) { renderEnding(); return; }
     syncAutoModals();
@@ -1671,11 +1706,28 @@
         else if (pick.ids.length < 2) pick.ids.push(id);
         openMissionModal();
         break;
+      case 'mission-repeat':
+        if (!UI.missionPick) break;
+        UI.missionPick.repeat = UI.missionPick.repeat === false;
+        openMissionModal();
+        break;
+      case 'mission-stop':
+        var stopped = E.stopMissionOrder(UI.game, id);
+        if (!stopped.ok) toast(stopped.msg, 'warn');
+        else { saveNow(); renderAll(); toast('常驻历练已停止，本次行程结束后队伍回山。', 'good'); }
+        break;
       case 'launch-mission':
         if (!UI.missionPick) break;
-        var ms = E.startMission(UI.game, UI.missionPick.missionId, UI.missionPick.ids);
+        var ms = E.startMission(UI.game, UI.missionPick.missionId, UI.missionPick.ids, { repeat: UI.missionPick.repeat !== false });
         if (!ms.ok) toast(ms.msg, 'warn');
-        else { UI.missionPick = null; saveNow(); closeModal(); renderAll(); toast('弟子启程下山。', 'good'); }
+        else {
+          var wasRepeat = UI.missionPick.repeat !== false;
+          UI.missionPick = null;
+          saveNow();
+          closeModal();
+          renderAll();
+          toast(wasRepeat ? '弟子启程，将常驻此地历练。' : '弟子启程下山。', 'good');
+        }
         break;
       case 'recipe':
         var b = E.buildingById(UI.game, el.getAttribute('data-building'));
@@ -1703,7 +1755,7 @@
         if (!cr.ok) toast(cr.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); toast(cr.disciple.name + '拜入山门。', 'good'); }
         break;
       case 'open-log': openLog(); break;
-      case 'save-now': saveNow(); toast('已存档。', 'good'); break;
+      case 'save-now': if (saveNow()) toast('已存档。', 'good'); break;
       case 'export-save':
         openExport(); break;
       case 'download-save':
@@ -1713,7 +1765,7 @@
         var ta = document.getElementById('import-json');
         var st = ta ? E.importState(ta.value) : null;
         if (!st) toast('存档格式不正确。', 'warn');
-        else { UI.game = st; E.save(st); closeModal(); document.getElementById('app').innerHTML = shellHtml(); renderAll(); startTimer(); toast('存档已导入。', 'good'); }
+        else { UI.game = st; E.save(st, true); closeModal(); document.getElementById('app').innerHTML = shellHtml(); renderAll(); startTimer(); toast('存档已导入。', 'good'); }
         break;
       case 'theme': applyTheme(value); saveSettings(); openSettings(); break;
       case 'map-zoom-in': UI.mapZoom = Math.min(1.65, UI.mapZoom + 0.15); renderSect(); break;
@@ -1859,12 +1911,34 @@
     });
 
     document.addEventListener('visibilitychange', function () {
-      if (document.hidden && UI.game) { UI.hiddenPause = true; UI.pausedBeforeHidden = UI.paused; UI.paused = true; }
-      else if (!document.hidden && UI.game && UI.hiddenPause) {
+      if (document.hidden && UI.game) {
+        E.save(UI.game);
+        UI.hiddenPause = true;
+        UI.pausedBeforeHidden = UI.paused;
+        UI.paused = true;
+      } else if (!document.hidden && UI.game && UI.hiddenPause) {
         UI.paused = !!UI.pausedBeforeHidden;
         UI.hiddenPause = false;
         renderHeader();
       }
+    });
+
+    window.addEventListener('pagehide', function () {
+      if (UI.game) E.save(UI.game);
+    });
+
+    window.addEventListener('storage', function (e) {
+      if (e.key !== D.SAVE_KEY || !e.newValue || !UI.game || UI.remoteSaveNotified) return;
+      try {
+        var other = JSON.parse(e.newValue);
+        if (other && other.lastSaved && other.lastSaved > (UI.game.lastSaved || 0)) {
+          UI.remoteSaveNotified = true;
+          UI.paused = true;
+          UI.autoPaused = false;
+          renderHeader();
+          toast('另一页面已更新存档。请刷新页面，载入最新进度。', 'warn');
+        }
+      } catch (err) {}
     });
   }
 

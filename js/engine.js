@@ -486,6 +486,8 @@
       hunger: randInt(state, 72, 92),
       energy: randInt(state, 72, 92),
       job: null,
+      jobMode: opts.jobMode === 'manual' ? 'manual' : 'auto',
+      preferredJob: null,
       state: 'idle',
       stateLabel: '闲居',
       missionId: null,
@@ -530,6 +532,8 @@
       research: { nodes: {}, totalSpent: 0 },
       market: { stock: [], restockDay: 1, lastRefresh: 0 },
       missions: [],
+      missionOrders: [],
+      nextMissionOrderId: 1,
       log: [],
       eventLast: {},
       lastEventDay: 0,
@@ -962,17 +966,10 @@
     (state.buffs || []).forEach(function (b) { b.days--; });
     state.buffs = (state.buffs || []).filter(function (b) { return b.days > 0; });
 
-    // 空置内门自动入静室
-    var meds = state.buildings.filter(function (b) { return b.type === 'meditation' && !b.construction; });
-    E.innerDisciples(state).forEach(function (d) {
-      if (d.job) return;
-      for (var i = 0; i < meds.length; i++) {
-        if (meds[i].workers.length < E.slotsOf(meds[i])) {
-          meds[i].workers.push(d.id);
-          d.job = meds[i].id;
-          break;
-        }
-      }
+    // 自动安排空闲弟子：按灵根、性情与空缺择最合适的差事
+    E.aliveDisciples(state).forEach(function (d) {
+      if (d.missionId || d.job || d.jobMode === 'manual') return;
+      E.autoAssign(state, d.id);
     });
 
     var stats = applyProduction(state);
@@ -992,6 +989,7 @@
       m.daysLeft--;
       if (m.daysLeft <= 0) resolveMission(state, m);
     });
+    processMissionOrders(state);
 
     // 坊市补货
     if (state.day >= state.market.restockDay) {
@@ -1152,7 +1150,9 @@
     return { ok: true };
   };
 
-  E.assign = function (state, discipleId, buildingId) {
+  E.assign = function (state, discipleId, buildingId, opts) {
+    opts = opts || {};
+    var auto = !!opts.auto;
     var d = E.discipleById(state, discipleId);
     if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
@@ -1167,7 +1167,11 @@
       if (!canWorkAt(b, d)) {
         return { ok: false, msg: d.role === 'inner' ? '内门弟子不做这些粗活，可去静室、丹房、藏经阁或演武场。' : '外门弟子尚未筑基，不能入静室修炼。' };
       }
-      if (d.job === b.id) return { ok: true, msg: '已在此当值。' };
+      if (d.job === b.id) {
+        d.jobMode = auto ? 'auto' : 'manual';
+        d.preferredJob = auto ? null : b.id;
+        return { ok: true, msg: '已在此当值。' };
+      }
     }
     // 新差事验证通过后，再移除旧差事
     if (d.job) {
@@ -1175,6 +1179,8 @@
       if (old) old.workers = old.workers.filter(function (id) { return id !== d.id; });
       d.job = null;
     }
+    d.jobMode = auto ? 'auto' : 'manual';
+    d.preferredJob = auto ? null : (buildingId || null);
     if (!buildingId) return { ok: true };
     b.workers.push(d.id);
     d.job = b.id;
@@ -1231,7 +1237,7 @@
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
     var b = E.recommendedJob(state, d);
     if (!b) return { ok: false, msg: '山中暂无合适差事。' };
-    var res = E.assign(state, d.id, b.id);
+    var res = E.assign(state, d.id, b.id, { auto: true });
     if (res.ok) res.building = b;
     return res;
   };
@@ -1245,7 +1251,7 @@
     var room = E.slotsOf(b) - b.workers.length;
     if (room <= 0) return { ok: false, msg: '此处已满员。' };
     var pool = E.aliveDisciples(state).filter(function (d) {
-      return !d.missionId && !d.job && d.id !== b.workers[0] && canWorkAt(b, d);
+      return !d.missionId && !d.job && d.jobMode !== 'manual' && d.id !== b.workers[0] && canWorkAt(b, d);
     }).sort(function (a, c) {
       var sa = E.aptitude(a) + (a.traits || []).length * 0.2;
       var sc = E.aptitude(c) + (c.traits || []).length * 0.2;
@@ -1253,7 +1259,7 @@
     });
     var added = 0;
     for (var i = 0; i < pool.length && added < room; i++) {
-      if (E.assign(state, pool[i].id, b.id).ok) added++;
+      if (E.assign(state, pool[i].id, b.id, { auto: true }).ok) added++;
     }
     if (!added) return { ok: false, msg: '暂无空闲弟子可补位。' };
     E.log(state, def.name + '补入 ' + added + ' 名弟子。', 'job');
@@ -1386,13 +1392,22 @@
     return (state.resources.renown || 0) >= (mission.minRenown || 0);
   };
 
-  E.startMission = function (state, missionId, discipleIds) {
+  E.startMission = function (state, missionId, discipleIds, opts) {
+    opts = opts || {};
     var m = D.MISSIONS.find(function (x) { return x.id === missionId; });
     if (!m) return { ok: false, msg: '没有这个地方。' };
     if (!E.missionReachable(state, m)) return { ok: false, msg: '声望不足，尚无人知晓这条山路。' };
     if (!discipleIds || !discipleIds.length) return { ok: false, msg: '至少派一名弟子。' };
     if (discipleIds.length > 2) return { ok: false, msg: '一队最多两名弟子。' };
     if (state.missions.length >= 2) return { ok: false, msg: '已有两队弟子在外，山中人手不够了。' };
+    var order = null;
+    if (opts.orderId) {
+      order = (state.missionOrders || []).find(function (o) { return o.id === opts.orderId && o.enabled; });
+      if (!order) return { ok: false, msg: '常驻历练已停止。' };
+    } else if (opts.repeat) {
+      var existingOrder = (state.missionOrders || []).find(function (o) { return o.enabled && o.missionId === missionId; });
+      if (existingOrder) return { ok: false, msg: '此地已有常驻队伍，先叫停原来的安排。' };
+    }
     var team = [];
     for (var i = 0; i < discipleIds.length; i++) {
       var d = E.discipleById(state, discipleIds[i]);
@@ -1408,12 +1423,30 @@
     var foodCost = 3 * team.length;
     if ((state.resources.food || 0) < foodCost) return { ok: false, msg: '干粮不够，至少需要 ' + foodCost + ' 食物。' };
     state.resources.food -= foodCost;
+    if (!order && opts.repeat) {
+      order = {
+        id: 'o' + (state.nextMissionOrderId++),
+        missionId: m.id,
+        discipleIds: team.map(function (d) { return d.id; }),
+        enabled: true,
+        nextTryDay: state.day + m.days + 2,
+        lastError: ''
+      };
+      state.missionOrders.push(order);
+    }
+    if (order) {
+      order.discipleIds = team.map(function (d) { return d.id; });
+      order.nextTryDay = state.day + m.days + 2;
+      order.lastError = '';
+    }
     var mission = {
       id: 'm' + (state.stats.missions + 1) + '_' + state.day,
       missionId: m.id, name: m.name, danger: m.danger,
       days: m.days, daysLeft: m.days, startDay: state.day,
       discipleIds: team.map(function (d) { return d.id; }),
-      teamPower: power
+      teamPower: power,
+      orderId: order ? order.id : null,
+      repeat: !!order
     };
     state.missions.push(mission);
     team.forEach(function (d) {
@@ -1431,9 +1464,44 @@
     return { ok: true, mission: mission };
   };
 
+  E.stopMissionOrder = function (state, orderId) {
+    var order = (state.missionOrders || []).find(function (o) { return o.id === orderId; });
+    if (!order) return { ok: false, msg: '常驻历练不存在。' };
+    state.missionOrders = state.missionOrders.filter(function (o) { return o.id !== orderId; });
+    state.missions.forEach(function (m) {
+      if (m.orderId === orderId) { m.orderId = null; m.repeat = false; }
+    });
+    E.log(state, '常驻历练已停止，队伍完成本次行程后回山。', 'system');
+    return { ok: true };
+  };
+
+  function processMissionOrders(state) {
+    if (state.missions.length >= 2) return;
+    (state.missionOrders || []).slice().forEach(function (order) {
+      if (!order.enabled || state.missions.length >= 2 || state.day < order.nextTryDay) return;
+      var team = order.discipleIds.map(function (id) { return E.discipleById(state, id); }).filter(Boolean);
+      if (team.length !== order.discipleIds.length || team.some(function (d) { return d.dead; })) {
+        order.enabled = false;
+        E.log(state, '常驻历练的队伍已散，行程中止。', 'warn');
+        return;
+      }
+      if (team.some(function (d) { return d.missionId; })) return;
+      var res = E.startMission(state, order.missionId, order.discipleIds, { orderId: order.id });
+      if (res.ok) {
+        order.lastError = '';
+        order.nextTryDay = state.day + res.mission.days + 2;
+      } else {
+        order.lastError = res.msg;
+        order.nextTryDay = state.day + 2;
+      }
+    });
+    state.missionOrders = state.missionOrders.filter(function (o) { return o.enabled; });
+  }
+
   function resolveMission(state, m) {
     var region = D.MISSIONS.find(function (x) { return x.id === m.missionId; });
     if (!region) return;
+    var order = m.orderId ? (state.missionOrders || []).find(function (o) { return o.id === m.orderId; }) : null;
     state.missions = state.missions.filter(function (x) { return x.id !== m.id; });
     var team = m.discipleIds.map(function (id) { return E.discipleById(state, id); }).filter(Boolean);
     var enemyPower = 24 + region.danger * 72 + E.getDate(state).year * 16;
@@ -1479,14 +1547,30 @@
         killDisciple(state, d, d.name + '在' + region.name + '重伤不治，没能回到山门。');
       }
     });
+    if (order) order.nextTryDay = state.day + 2;
+    team.forEach(function (d) {
+      if (d.dead) return;
+      if (d.jobMode === 'manual' && d.preferredJob) {
+        var preferred = E.buildingById(state, d.preferredJob);
+        if (preferred && E.assign(state, d.id, preferred.id).ok) return;
+      }
+      E.autoAssign(state, d.id);
+    });
     if (!success) state.resources.renown = Math.max(0, state.resources.renown - 1);
     E.log(state, '历练归来：' + (success ? '收获颇丰' : '损兵折将') + '（' + region.name + '）。', success ? 'good' : 'warn');
-    var report = {
-      type: 'mission', title: region.name + ' · 历练归来',
-      success: success, lines: lines, rewards: rewards, team: team.map(function (d) { return d.name; }),
-      summary: success ? '此行顺利。' : '此行不利，弟子们需要休养。'
-    };
-    addReport(state, report);
+    if (order) {
+      var rewardText = Object.keys(rewards).map(function (k) {
+        return (D.RESOURCES[k] ? D.RESOURCES[k].name : k) + ' ' + rewards[k];
+      }).join('、');
+      E.log(state, '常驻队伍回到山门，休整两日后再赴' + region.name + '。' + (rewardText ? '带回' + rewardText + '。' : ''), success ? 'good' : 'warn');
+    } else {
+      var report = {
+        type: 'mission', title: region.name + ' · 历练归来',
+        success: success, lines: lines, rewards: rewards, team: team.map(function (d) { return d.name; }),
+        summary: success ? '此行顺利。' : '此行不利，弟子们需要休养。'
+      };
+      addReport(state, report);
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1836,32 +1920,141 @@
   /* ------------------------------------------------------------------ */
   /* 存档                                                               */
   /* ------------------------------------------------------------------ */
-  E.save = function (state) {
-    try {
-      if (typeof localStorage === 'undefined') return false;
-      state.lastSaved = Date.now();
-      localStorage.setItem(D.SAVE_KEY, JSON.stringify(state));
-      return true;
-    } catch (e) { return false; }
+  E.lastSaveError = '';
+
+  E.normalizeState = function (state) {
+    if (!state || typeof state !== 'object' || !Array.isArray(state.disciples)) return null;
+    if (state.version != null && state.version > D.VERSION) return null;
+    state.version = D.VERSION;
+    state.map = Array.isArray(state.map) && state.map.length ? state.map : D.MAP.map(function (row) { return row.split(''); });
+    state.paths = Array.isArray(state.paths) ? state.paths : D.PATHS.map(function (p) { return p.slice(); });
+    state.buildings = Array.isArray(state.buildings) ? state.buildings : [];
+    state.missions = Array.isArray(state.missions) ? state.missions : [];
+    state.missionOrders = Array.isArray(state.missionOrders) ? state.missionOrders : [];
+    state.log = Array.isArray(state.log) ? state.log : [];
+    state.buffs = Array.isArray(state.buffs) ? state.buffs : [];
+    state.reportQueue = Array.isArray(state.reportQueue) ? state.reportQueue : [];
+    state.eventLast = state.eventLast && typeof state.eventLast === 'object' ? state.eventLast : {};
+    state.flags = state.flags && typeof state.flags === 'object' ? state.flags : {};
+    state.pills = state.pills && typeof state.pills === 'object' ? state.pills : {};
+    state.resources = state.resources && typeof state.resources === 'object' ? state.resources : {};
+    ['stones', 'food', 'wood', 'stone', 'herbs', 'renown'].forEach(function (k) {
+      if (typeof state.resources[k] !== 'number') state.resources[k] = 0;
+    });
+    state.research = state.research && typeof state.research === 'object' ? state.research : { nodes: {}, totalSpent: 0 };
+    state.research.nodes = state.research.nodes && typeof state.research.nodes === 'object' ? state.research.nodes : {};
+    state.market = state.market && typeof state.market === 'object' ? state.market : { stock: [], restockDay: 1, lastRefresh: 0 };
+    state.market.stock = Array.isArray(state.market.stock) ? state.market.stock : [];
+    state.stats = state.stats && typeof state.stats === 'object' ? state.stats : {};
+    ['days', 'battlesWon', 'battlesLost', 'recruited', 'promoted', 'missions', 'pillsMade', 'maxRenown', 'breakthroughs', 'built'].forEach(function (k) {
+      if (typeof state.stats[k] !== 'number') state.stats[k] = 0;
+    });
+    state.guide = state.guide && typeof state.guide === 'object' ? state.guide : { seen: false };
+    state.lastEventDay = Number(state.lastEventDay) || 0;
+    state.lastSaved = Number(state.lastSaved) || 0;
+    state.day = Number(state.day) || 1;
+    state.nextBuildingId = Number(state.nextBuildingId) || (state.buildings.length + 1);
+    state.nextDiscipleId = Number(state.nextDiscipleId) || (state.disciples.length + 1);
+    state.nextMissionOrderId = Number(state.nextMissionOrderId) || (state.missionOrders.length + 1);
+    state.weather = state.weather || 'clear';
+    state.ending = state.ending || null;
+    state.pendingEvent = state.pendingEvent || null;
+    state.pendingResult = state.pendingResult || null;
+    state.pendingReport = state.pendingReport || null;
+    state.recruitCandidates = state.recruitCandidates || null;
+    state.recruitCooldown = Number(state.recruitCooldown) || 0;
+    state.insight = Number(state.insight) || 0;
+
+    state.buildings.forEach(function (b) {
+      b.workers = Array.isArray(b.workers) ? b.workers : [];
+      b.level = Number(b.level) || 1;
+      b.construction = Number(b.construction) || 0;
+    });
+    state.disciples.forEach(function (d) {
+      d.job = d.job || null;
+      d.missionId = d.missionId || null;
+      d.relations = d.relations && typeof d.relations === 'object' ? d.relations : {};
+      d.traits = Array.isArray(d.traits) ? d.traits : [];
+      d.jobMode = d.jobMode === 'manual' ? 'manual' : 'auto';
+      if (d.preferredJob === undefined) d.preferredJob = d.jobMode === 'manual' ? d.job : null;
+      d.dead = !!d.dead;
+    });
+    state.missionOrders.forEach(function (order) {
+      order.discipleIds = Array.isArray(order.discipleIds) ? order.discipleIds : [];
+      order.enabled = order.enabled !== false;
+      order.nextTryDay = Number(order.nextTryDay) || 0;
+    });
+    if (!state.playerId && state.disciples.length) state.playerId = state.disciples[0].id;
+    return state;
   };
+
+  E.save = function (state, force) {
+    E.lastSaveError = '';
+    try {
+      if (typeof localStorage === 'undefined') { E.lastSaveError = 'unavailable'; return false; }
+      if (!state) { E.lastSaveError = 'empty'; return false; }
+      var existingRaw = null;
+      try { existingRaw = localStorage.getItem(D.SAVE_KEY); } catch (e) {}
+      if (existingRaw && !force) {
+        try {
+          var existing = JSON.parse(existingRaw);
+          if (existing && existing.lastSaved && state.lastSaved && existing.lastSaved > state.lastSaved) {
+            E.lastSaveError = 'stale';
+            return false;
+          }
+        } catch (e) {}
+      }
+      var previousSaved = state.lastSaved;
+      state.lastSaved = Date.now();
+      var json = JSON.stringify(state);
+      try { if (existingRaw) localStorage.setItem(D.SAVE_BACKUP_KEY, existingRaw); } catch (e) {}
+      try {
+        localStorage.setItem(D.SAVE_KEY, json);
+      } catch (e) {
+        state.lastSaved = previousSaved;
+        E.lastSaveError = 'quota';
+        return false;
+      }
+      return true;
+    } catch (e) {
+      E.lastSaveError = 'error';
+      return false;
+    }
+  };
+
+  function parseSave(raw) {
+    if (!raw) return null;
+    try {
+      var state = JSON.parse(raw);
+      return E.normalizeState(state);
+    } catch (e) { return null; }
+  }
 
   E.load = function () {
     try {
       if (typeof localStorage === 'undefined') return null;
-      var raw = localStorage.getItem(D.SAVE_KEY);
-      if (!raw) return null;
-      var state = JSON.parse(raw);
-      if (!state || state.version !== D.VERSION || !state.disciples) return null;
-      return state;
+      var main = null;
+      var backup = null;
+      try { main = parseSave(localStorage.getItem(D.SAVE_KEY)); } catch (e) {}
+      try { backup = parseSave(localStorage.getItem(D.SAVE_BACKUP_KEY)); } catch (e) {}
+      if (main && backup) return (backup.lastSaved || 0) > (main.lastSaved || 0) ? backup : main;
+      return main || backup;
     } catch (e) { return null; }
   };
 
   E.hasSave = function () {
-    try { return typeof localStorage !== 'undefined' && !!localStorage.getItem(D.SAVE_KEY); } catch (e) { return false; }
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      return !!(localStorage.getItem(D.SAVE_KEY) || localStorage.getItem(D.SAVE_BACKUP_KEY));
+    } catch (e) { return false; }
   };
 
   E.deleteSave = function () {
-    try { if (typeof localStorage !== 'undefined') localStorage.removeItem(D.SAVE_KEY); } catch (e) {}
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.removeItem(D.SAVE_KEY);
+      localStorage.removeItem(D.SAVE_BACKUP_KEY);
+    } catch (e) {}
   };
 
   E.exportState = function (state) {
@@ -1870,9 +2063,7 @@
 
   E.importState = function (json) {
     try {
-      var state = JSON.parse(json);
-      if (!state || state.version !== D.VERSION || !state.disciples) return null;
-      return state;
+      return E.normalizeState(JSON.parse(json));
     } catch (e) { return null; }
   };
 

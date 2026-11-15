@@ -33,6 +33,16 @@ function clearPending(state) {
   state.reportQueue = [];
 }
 
+function withStorage(fn) {
+  var store = {};
+  global.localStorage = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+    setItem: function (k, v) { store[k] = String(v); },
+    removeItem: function (k) { delete store[k]; }
+  };
+  try { fn(store); } finally { delete global.localStorage; }
+}
+
 console.log('\n一念长生 · 引擎测试\n');
 
 test('地图尺寸与地形数据完整', function () {
@@ -274,7 +284,7 @@ test('断粮会消耗饱食并损伤气血', function () {
   var s = newState();
   s.resources.food = 0;
   s.buildings.forEach(function (b) { b.workers = []; });
-  s.disciples.forEach(function (d) { d.job = null; });
+  s.disciples.forEach(function (d) { d.job = null; d.jobMode = 'manual'; d.preferredJob = null; });
   var d = E.player(s);
   var hunger = d.hunger;
   E.tick(s);
@@ -301,10 +311,14 @@ test('初始引导任务与警讯', function () {
   assert.ok(Array.isArray(alerts));
 });
 
-test('旧版存档版本不会被当成新版载入', function () {
+test('旧版存档会补齐字段并升到当前版本', function () {
   var s = newState();
   var json = JSON.stringify(Object.assign({}, s, { version: 1 }));
-  assert.strictEqual(E.importState(json), null);
+  var loaded = E.importState(json);
+  assert.ok(loaded);
+  assert.strictEqual(loaded.version, D.VERSION);
+  assert.strictEqual(loaded.sectName, s.sectName);
+  assert.ok(Array.isArray(loaded.missionOrders));
 });
 
 test('营造会自动择地、扣费并落在空地上', function () {
@@ -353,6 +367,85 @@ test('山门事件之间有冷却，不会连日弹窗', function () {
   for (var i = 0; i < 13; i++) { E.tick(s); clearPending(s); }
   assert.strictEqual(s.day, day + 13);
   assert.strictEqual(s.pendingEvent, null);
+});
+
+test('存档会写入并读回最新进度', function () {
+  withStorage(function () {
+    var s = newState(11);
+    s.resources.food = 321;
+    assert.strictEqual(E.save(s), true);
+    var loaded = E.load();
+    assert.ok(loaded);
+    assert.strictEqual(loaded.resources.food, 321);
+    assert.ok(loaded.lastSaved > 0);
+  });
+});
+
+test('主存档损坏时会回退到备份', function () {
+  withStorage(function () {
+    var s = newState(12);
+    s.resources.food = 111;
+    assert.strictEqual(E.save(s), true);
+    s.resources.food = 222;
+    assert.strictEqual(E.save(s), true);
+    localStorage.setItem(D.SAVE_KEY, '{broken');
+    var loaded = E.load();
+    assert.ok(loaded);
+    assert.strictEqual(loaded.resources.food, 111);
+  });
+});
+
+test('旧页面不能覆盖较新的存档', function () {
+  withStorage(function () {
+    var newer = newState(13);
+    newer.resources.food = 777;
+    assert.strictEqual(E.save(newer), true);
+    var savedAt = newer.lastSaved;
+    var older = newState(14);
+    older.lastSaved = savedAt - 1000;
+    assert.strictEqual(E.save(older), false);
+    assert.strictEqual(E.load().resources.food, 777);
+  });
+});
+
+test('常驻历练会归来自动再出发并可叫停', function () {
+  var s = newState(15);
+  s.lastEventDay = 9999;
+  var d = E.outerDisciples(s)[0];
+  var res = E.startMission(s, 'backhill', [d.id], { repeat: true });
+  assert.ok(res.ok);
+  assert.strictEqual(s.missionOrders.length, 1);
+  var orderId = res.mission.orderId;
+  var dup = E.startMission(s, 'backhill', [E.outerDisciples(s)[1].id], { repeat: true });
+  assert.strictEqual(dup.ok, false);
+  for (var i = 0; i < 4; i++) { clearPending(s); E.tick(s); }
+  assert.strictEqual(s.missionOrders.length, 1);
+  assert.strictEqual(s.missions.length, 1);
+  assert.strictEqual(s.missions[0].orderId, orderId);
+  assert.strictEqual(E.stopMissionOrder(s, orderId).ok, true);
+  assert.strictEqual(s.missionOrders.length, 0);
+  assert.strictEqual(s.missions[0].orderId, null);
+});
+
+test('历练归来会自动补上合适差事', function () {
+  var s = newState(16);
+  s.lastEventDay = 9999;
+  var d = E.outerDisciples(s)[0];
+  E.assign(s, d.id, null);
+  assert.strictEqual(d.jobMode, 'manual');
+  assert.ok(E.startMission(s, 'backhill', [d.id]).ok);
+  for (var i = 0; i < 3; i++) { clearPending(s); E.tick(s); }
+  assert.strictEqual(d.missionId, null);
+  assert.ok(d.job);
+});
+
+test('手动待命不会被每日自动安排覆盖', function () {
+  var s = newState(17);
+  var d = E.outerDisciples(s)[0];
+  E.assign(s, d.id, null);
+  assert.strictEqual(d.jobMode, 'manual');
+  E.tick(s);
+  assert.strictEqual(d.job, null);
 });
 
 console.log('\n' + passed + ' 项测试通过。\n');
