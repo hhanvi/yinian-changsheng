@@ -265,6 +265,10 @@
     if (item.type === 'flag') {
       return '<g class="decor flag" transform="translate(' + p.x + ',' + p.y + ')"><ellipse cx="0" cy="4" rx="6" ry="2.5" fill="rgba(40,30,20,.1)"/><path d="M0 3 L0 -28" stroke="#6d573d" stroke-width="1.6"/><path d="M0 -27 q14 4 18 0 l-4 12 q-10 3 -14 0 Z" fill="#a33b2a"/><path d="M7 -24 l2 6" stroke="#e8d6b0" stroke-width="1"/></g>';
     }
+    if (item.type === 'stele') return steleSvg(p.x, p.y);
+    if (item.type === 'bridge') return bridgeSvg(p.x, p.y);
+    if (item.type === 'lotus') return lotusSvg(p.x, p.y, hashStr('lotus' + item.x + ':' + item.y));
+    if (item.type === 'pine') return pineSvg(p.x, p.y, hashStr('pine' + item.x + ':' + item.y), 0.95);
     return treeSvg(p.x, p.y, hashStr('decor' + item.x + ':' + item.y), 0.8);
   }
 
@@ -276,6 +280,69 @@
       lines += '<path class="ripple" style="animation-delay:' + (r() * 3).toFixed(2) + 's" d="M' + (sx + dx - 8) + ' ' + (sy + dy) + ' q8 -3 16 0" stroke="#e7f2ec" stroke-width="1" fill="none" opacity=".55"/>';
     }
     return lines;
+  }
+
+  function foamArc(x1, y1, x2, y2, seed) {
+    var r = seeded(seed);
+    var mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    var ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+    return '<g class="shore-foam" transform="translate(' + mx.toFixed(1) + ',' + my.toFixed(1) + ') rotate(' + ang.toFixed(1) + ')">' +
+      '<ellipse cx="0" cy="0" rx="' + (7 + r() * 5).toFixed(1) + '" ry="1.8" fill="#f4f8ee" opacity=".4"/>' +
+      '<ellipse cx="' + (r() * 8 - 4).toFixed(1) + '" cy="2.4" rx="3.2" ry="1.2" fill="#f4f8ee" opacity=".22"/></g>';
+  }
+
+  function lotusSvg(sx, sy, seed) {
+    var r = seeded(seed);
+    var petals = '';
+    for (var i = 0; i < 6; i++) {
+      petals += '<ellipse cx="0" cy="-2" rx="4.2" ry="2.2" fill="#e8b7c2" opacity=".9" transform="rotate(' + (i * 60 + Math.floor(r() * 12)) + ')"/>';
+    }
+    return '<g class="lotus" transform="translate(' + sx + ',' + sy + ')">' +
+      '<ellipse cx="0" cy="1" rx="8" ry="3.4" fill="#5f8a72" opacity=".8"/>' +
+      '<ellipse cx="-7" cy="0" rx="5" ry="2.2" fill="#6d9a7e" opacity=".7"/>' +
+      petals +
+      '<circle cx="0" cy="-2" r="2.2" fill="#e8d27f"/></g>';
+  }
+
+  function pineSvg(sx, sy, seed, scale) {
+    var r = seeded(seed);
+    var s = scale || 1;
+    var h = 26 + Math.floor(r() * 10);
+    return '<g class="tree pine" transform="translate(' + sx + ',' + sy + ') scale(' + s + ')">' +
+      '<ellipse cx="0" cy="3" rx="9" ry="3" fill="rgba(30,40,25,.16)"/>' +
+      '<path d="M0 2 L0 -' + (h * .45).toFixed(1) + '" stroke="#5e4b37" stroke-width="2.2"/>' +
+      '<path d="M-11 -' + (h * .32).toFixed(1) + ' L0 -' + (h * .62).toFixed(1) + ' L11 -' + (h * .32).toFixed(1) + ' Z" fill="#3f5d43"/>' +
+      '<path d="M-8 -' + (h * .58).toFixed(1) + ' L0 -' + (h * .84).toFixed(1) + ' L8 -' + (h * .58).toFixed(1) + ' Z" fill="#4c6b4c"/>' +
+      '<path d="M-5 -' + (h * .82).toFixed(1) + ' L0 -' + h.toFixed(1) + ' L5 -' + (h * .82).toFixed(1) + ' Z" fill="#5a7a55"/>' +
+      '</g>';
+  }
+
+  function steleSvg(sx, sy) {
+    return '<g class="decor stele" transform="translate(' + sx + ',' + sy + ')">' +
+      '<ellipse cx="0" cy="4" rx="9" ry="3.2" fill="rgba(35,30,20,.14)"/>' +
+      '<polygon points="-7,2 -7,-16 -4,-21 4,-21 7,-16 7,2" fill="#9a927f"/>' +
+      '<polygon points="-7,-16 -4,-21 4,-21 7,-16 0,-13" fill="#b0a894" opacity=".8"/>' +
+      '<path d="M-2,-16 L-2,-4 M2,-13 L2,-2" stroke="#6f6754" stroke-width="1"/>' +
+      '<rect x="-9" y="1" width="18" height="3.4" rx="1" fill="#847c68"/></g>';
+  }
+
+  function bridgeSvg(sx, sy) {
+    return '<g class="decor bridge" transform="translate(' + sx + ',' + sy + ')">' +
+      '<ellipse cx="0" cy="7" rx="19" ry="5" fill="rgba(20,35,35,.16)"/>' +
+      '<path d="M-17 2 Q0 -7 17 2 L17 6 Q0 -3 -17 6 Z" fill="#a8895f"/>' +
+      '<path d="M-12 -1 L-12 -8 M12 -1 L12 -8 M-14 -6 Q0 -13 14 -6" stroke="#7c6142" stroke-width="1.5" fill="none"/>' +
+      '<path d="M-8 2.6 L-8 -4 M0 0.6 L0 -5.5 M8 2.6 L8 -4" stroke="#7c6142" stroke-width="1"/>' +
+      '</g>';
+  }
+
+  function motesSvg(sx, sy, seed) {
+    var r = seeded(seed);
+    var out = '';
+    for (var i = 0; i < 4; i++) {
+      var dx = r() * 30 - 15, dy = r() * 16 - 8;
+      out += '<circle class="mote" style="animation-delay:-' + (r() * 5).toFixed(2) + 's" cx="' + (sx + dx).toFixed(1) + '" cy="' + (sy + dy).toFixed(1) + '" r="' + (1 + r() * 1.4).toFixed(1) + '" fill="#d8ecd2" opacity=".55"/>';
+    }
+    return out;
   }
 
   function houseSvg(pal, opts) {
@@ -455,16 +522,24 @@
     parts.push('<defs>' +
       '<linearGradient id="mapSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--map-sky-a)"/><stop offset="1" style="stop-color:var(--map-sky-b)"/></linearGradient>' +
       '<radialGradient id="spiritGlow"><stop offset="0" stop-color="#b9e0cf" stop-opacity=".8"/><stop offset="1" stop-color="#b9e0cf" stop-opacity="0"/></radialGradient>' +
+      '<radialGradient id="sunGlow"><stop offset="0" stop-color="var(--map-sun)" stop-opacity=".5"/><stop offset="1" stop-color="var(--map-sun)" stop-opacity="0"/></radialGradient>' +
       '<filter id="softGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
       '</defs>');
     parts.push('<rect x="0" y="0" width="780" height="520" fill="url(#mapSky)"/>');
     parts.push('<image class="map-distant-painting" href="assets/qingya-panorama.jpg" x="0" y="-5" width="780" height="520" preserveAspectRatio="xMidYMid slice" opacity=".45"/>');
+    // 晕日与流云
+    parts.push('<g class="map-sun"><circle cx="618" cy="84" r="58" fill="url(#sunGlow)"/><circle cx="618" cy="84" r="21" fill="var(--map-sun)"/><circle cx="618" cy="84" r="21" fill="none" stroke="#fff" stroke-opacity=".35"/></g>');
+    parts.push('<g class="mist-band"><ellipse cx="230" cy="152" rx="210" ry="17" fill="#f4f2e4" opacity=".14"/><ellipse cx="530" cy="188" rx="265" ry="21" fill="#f4f2e4" opacity=".11"/><ellipse cx="390" cy="118" rx="150" ry="12" fill="#f4f2e4" opacity=".12"/></g>');
     // 远山
     parts.push('<path d="M-40 500 L-40 145 Q55 85 120 165 L180 82 250 190 330 144 410 225 530 120 615 205 750 95 830 165 830 500 Z" fill="var(--map-hill-a)" opacity=".24"/>');
+    parts.push('<path d="M-40 500 L-40 220 Q90 150 170 232 L260 158 340 246 445 196 560 262 680 178 830 248 830 500 Z" fill="var(--map-hill-b)" opacity=".3"/>');
     // 石台侧壁与投影，把舆图托成云海中的一座山台。
     parts.push('<ellipse cx="390" cy="402" rx="310" ry="28" fill="#183e38" opacity=".13"/>');
     parts.push('<path d="M38 242 L326 98 742 306 454 450 38 242 L38 267 454 480 742 336 742 306 454 450 38 242" fill="#406659" stroke="#57766a" stroke-width="1"/>');
     parts.push('<path d="M38 252 L454 462 742 318 M90 284 l15 30 M180 330 l8 29 M280 382 l12 30 M390 438 l10 28 M530 422 l-4 28 M630 372 l-8 24" fill="none" stroke="#96b6a1" stroke-width="2" opacity=".4"/>');
+    parts.push('<path d="M52 262 L454 472 730 332" fill="none" stroke="#a8c4a6" stroke-width="1.4" opacity=".16"/>');
+    parts.push('<path d="M64 276 L454 482 720 342" fill="none" stroke="#22423a" stroke-width="1.2" opacity=".2"/>');
+    parts.push('<g class="cliff-moss" stroke="#5c7e58" stroke-width="1.3" fill="none" opacity=".55"><path d="M120 292 q2 12 -3 19 M250 356 q3 13 -2 22 M470 462 q1 10 -3 16 M590 398 q2 12 -2 19 M680 350 q2 9 -1 14"/></g>');
     // 地块
     var rows = state.map || [];
     for (var y = 0; y < rows.length; y++) {
@@ -473,10 +548,42 @@
         var p = iso(x, y);
         var cls = { G: 'grass', F: 'forest', M: 'mountain', W: 'water', S: 'spirit' }[t] || 'grass';
         var selected = UI.tile && UI.tile.x === x && UI.tile.y === y ? ' tile-selected' : '';
+        var seed = hashStr(x + ':' + y + ':' + state.sectName);
+        var varyTone = ((x * 31 + y * 17) % 5) / 130;
+        var tex = '';
+        if (t === 'W') {
+          tex = '<polygon class="tile-sheen" points="' + tilePoly(p.x, p.y, 5) + '"/>';
+          var dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+          for (var di = 0; di < dirs.length; di++) {
+            var nx = x + dirs[di][0], ny = y + dirs[di][1];
+            var nt = rows[ny] ? rows[ny][nx] : null;
+            if (nt && nt !== 'W') {
+              var q = iso(nx, ny);
+              tex += foamArc(p.x, p.y, q.x, q.y, seed + nx * 13 + ny * 7);
+            }
+          }
+          if (seed % 3 === 0) tex += lotusSvg(p.x + 7, p.y + 2, seed);
+        } else if (t === 'S') {
+          tex = motesSvg(p.x, p.y, seed) +
+            lotusSvg(p.x - 13, p.y + 4, seed + 3) +
+            '<circle class="shimmer" cx="' + p.x + '" cy="' + p.y + '" r="16" fill="none" stroke="#e7f2da" stroke-width="1" opacity=".3"/>';
+        } else if (t === 'M') {
+          tex = '<path d="M' + (p.x - 15) + ',' + (p.y + 2) + ' l7,-9 l6,7 l5,-6 l4,5" fill="none" stroke="#6e6a5c" stroke-width="1.3" opacity=".6"/>' +
+            '<path d="M' + (p.x - 9) + ',' + (p.y + 5) + ' l12,-3" stroke="#7d786a" stroke-width="1" opacity=".4"/>';
+          if (seed % 2 === 0) tex += pineSvg(p.x + 13, p.y - 5, seed, 0.5);
+        } else if (t === 'F') {
+          tex = '<ellipse cx="' + p.x + '" cy="' + (p.y + 3) + '" rx="17" ry="6" fill="#31473a" opacity=".26"/>' +
+            '<path d="M' + (p.x - 12) + ',' + (p.y + 4) + ' q3,-5 6,0" stroke="#5c7a52" stroke-width="1.1" fill="none" opacity=".7"/>' +
+            '<circle cx="' + (p.x - 12) + '" cy="' + (p.y + 4) + '" r="1.5" fill="#c9b287" opacity=".8"/>';
+        } else {
+          tex = '<path d="M' + (p.x - 13) + ',' + (p.y + 2) + ' q2,-6 4,0 q2,-5 4,1 q2,-4 4,1" stroke="#68835a" stroke-width="1.1" fill="none" opacity=".6"/>';
+          if (seed % 4 === 0) tex += '<circle cx="' + (p.x + 9) + '" cy="' + (p.y - 1) + '" r="1.5" fill="' + (seed % 8 === 0 ? '#c97b6a' : '#e3d191') + '" opacity=".85"/>';
+        }
         parts.push('<g class="tile tile-' + cls + selected + '" data-tile="' + x + ',' + y + '">' +
           '<polygon points="' + tilePoly(p.x, p.y, 0) + '"/>' +
+          '<polygon class="tile-vary" points="' + tilePoly(p.x, p.y, 0) + '" fill="' + ((x + y) % 2 ? '#ffffff' : '#24352b') + '" opacity="' + varyTone.toFixed(3) + '"/>' +
           '<polygon class="tile-edge" points="' + tilePoly(p.x, p.y, 0) + '"/>' +
-          (t === 'G' || t === 'F' ? '<path class="terrain-brush" d="M' + (p.x - 19) + ',' + (p.y + 1) + ' l16,7 m0,-12 l18,8" fill="none" stroke="' + ((x + y) % 2 ? '#cee0b2' : '#365d41') + '" opacity=".1" stroke-width="4"/>' : '') +
+          tex +
           '</g>');
       }
     }
@@ -515,6 +622,24 @@
     state.disciples.filter(function (d) { return !d.dead && !d.missionId; }).sort(function (a, b) {
       return unitPosition(a).y - unitPosition(b).y;
     }).forEach(function (d) { parts.push(tokenSvg(d)); });
+    // 崖沿草蔓与飞瀑
+    [[38, 242, 454, 450], [454, 450, 742, 306]].forEach(function (edge, ei) {
+      var n = 10;
+      for (var i = 1; i < n; i++) {
+        var tt = i / n;
+        var ex = edge[0] + (edge[2] - edge[0]) * tt;
+        var ey = edge[1] + (edge[3] - edge[1]) * tt;
+        var sd = hashStr('rim' + ei + ':' + i);
+        parts.push('<path d="M' + ex.toFixed(1) + ' ' + (ey + 3).toFixed(1) + ' q1 5 -2 8 M' + (ex + 3).toFixed(1) + ' ' + (ey + 3).toFixed(1) + ' q2 4 0 7" stroke="#6e8a5e" stroke-width="1.2" fill="none" opacity=".7"/>');
+        if (sd % 3 === 0) parts.push('<path d="M' + (ex - 2).toFixed(1) + ' ' + (ey + 4).toFixed(1) + ' q-1 9 2 15" stroke="#5c7650" stroke-width="1" fill="none" opacity=".45"/>');
+      }
+    });
+    parts.push('<g class="waterfall">' +
+      '<path class="waterfall-strand" d="M446 450 C 450 464 444 478 449 490" stroke="#cfe4dc" stroke-width="4" fill="none" opacity=".45"/>' +
+      '<path class="waterfall-strand" style="animation-delay:-1.2s" d="M454 452 C 457 466 451 479 456 490" stroke="#eef6ef" stroke-width="2" fill="none" opacity=".32"/>' +
+      '<ellipse cx="451" cy="489" rx="24" ry="6" fill="#f2f5e9" opacity=".32"/>' +
+      '<ellipse cx="438" cy="486" rx="11" ry="4.5" fill="#f2f5e9" opacity=".22"/>' +
+      '</g>');
     // 云影
     parts.push('<g class="cloud-shadows"><ellipse cx="180" cy="250" rx="130" ry="34" fill="#fff" opacity=".13"/><ellipse cx="560" cy="345" rx="160" ry="40" fill="#fff" opacity=".11"/><ellipse cx="420" cy="130" rx="100" ry="24" fill="#fff" opacity=".1"/></g>');
     parts.push('<g class="mountain-cranes" fill="none" stroke="#31554e" stroke-width="1.3" opacity=".65"><path d="M560 100 q5 -5 10 0 q5 -5 10 0 M590 88 q4 -4 8 0 q4 -4 8 0 M610 108 q3 -3 6 0 q3 -3 6 0"/></g>');

@@ -75,7 +75,12 @@
     { type: 'flag', x: 5, y: 8 },
     { type: 'flag', x: 7, y: 8 },
     { type: 'pine', x: 1, y: 2 },
-    { type: 'pine', x: 11, y: 7 }
+    { type: 'pine', x: 11, y: 7 },
+    { type: 'stele', x: 4, y: 6 },
+    { type: 'stele', x: 8, y: 4 },
+    { type: 'bridge', x: 9, y: 8 },
+    { type: 'lotus', x: 11, y: 1 },
+    { type: 'lotus', x: 10, y: 8 }
   ];
 
   /* ------------------------------------------------------------------ */
