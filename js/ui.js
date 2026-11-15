@@ -535,29 +535,6 @@
     return out;
   }
 
-  function renderScenery() {
-    if (window.SectScenery && typeof window.SectScenery.render === 'function') {
-      return window.SectScenery.render();
-    }
-    return '<div class="scenery-fallback" aria-hidden="true"></div>';
-  }
-
-  function weatherLayer() {
-    var w = weather();
-    var n = w.id === 'rain' ? 26 : w.id === 'snow' ? 30 : w.id === 'fog' ? 3 : 12;
-    var items = '';
-    for (var i = 0; i < n; i++) {
-      var seed = hashStr(i + ':' + w.id + ':' + UI.game.day);
-      var left = seed % 100;
-      var delay = ((seed >> 8) % 100) / 10;
-      var dur = 3 + ((seed >> 12) % 40) / 10;
-      var size = 2 + ((seed >> 16) % 4);
-      var cls = w.id === 'rain' ? 'rain' : w.id === 'snow' ? 'snow' : w.id === 'fog' ? 'fog' : 'petal';
-      items += '<i class="' + cls + '" style="left:' + left + '%;animation-delay:-' + delay + 's;animation-duration:' + dur + 's;--s:' + size + 'px"></i>';
-    }
-    return '<div class="weather-layer weather-' + w.id + '" aria-hidden="true">' + items + '</div>';
-  }
-
   /* ------------------------------------------------------------------ */
   /* 氛围图                                                             */
   /* ------------------------------------------------------------------ */
@@ -877,16 +854,6 @@
     var topDisciples = E.aliveDisciples(UI.game).sort(function (a, b) { return E.power(b, UI.game) - E.power(a, UI.game); }).slice(0, 3);
 
     view.innerHTML = '<section class="scenic-header" aria-label="青崖山水"><div class="scenic-copy"><span class="scenic-kicker">青崖山 · ' + d.season.full + '</span><h2>山有归处，心向长生。</h2><p>' + h(d.season.desc) + '</p><button class="scenic-link" data-action="open-journey">展开宗门长卷 <span>七章仙途 ›</span></button></div><div class="scenic-seal" aria-hidden="true">青崖<br>山居</div></section><div class="sect-layout"><div class="mountain-column">' +
-      '<section class="map-panel panel scenery-panel">' +
-      '<div class="map-head"><div><p class="eyebrow">松风入院 · 云水为邻</p><h2>' + h(UI.game.sectName) + ' · 山门绘卷</h2></div><div class="map-head-right"><span class="weather-chip">' + h(weather().glyph) + ' · ' + h(d.season.full) + '</span><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span></div></div>' +
-      '<div class="map-frame scenery-view" id="sect-scenery" data-season="' + d.season.key + '">' +
-      renderScenery() + weatherLayer() +
-      '<div class="scenery-inscription" aria-hidden="true"><b>青崖山居</b><span>一径入烟霞</span></div>' +
-      '</div><p class="scenery-foot">山中日月长，松下听风来。</p>' +
-      '</section><div class="activity-grid">' + journeyCard() + commissionCard() + '</div></div>' +
-
-      '<aside class="side-column">' +
-      (selected ? selectedBuildingCard(selected) : '') +
       '<div class="panel sect-status">' +
       '<div class="panel-head"><h3>宗门气象</h3><span class="panel-mark">' + st.fsGrade + '</span></div>' +
       '<div class="grade-line"><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span><span>' + h(st.grade.desc) + '</span></div>' +
@@ -910,6 +877,10 @@
       }).join('') +
       '</div>' +
 
+      '<div class="activity-grid">' + journeyCard() + commissionCard() + '</div></div>' +
+
+      '<aside class="side-column">' +
+      (selected ? selectedBuildingCard(selected) : '') +
       '<div class="panel disciples-snapshot"><div class="panel-head"><h3>山中弟子</h3><button class="text-btn" data-action="nav" data-tab="disciples">全部 ›</button></div>' +
       topDisciples.map(function (d) {
         return '<button class="snapshot-row" data-action="open-disciple" data-id="' + d.id + '">' + avatarSvg(d, 40) +

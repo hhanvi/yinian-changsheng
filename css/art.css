@@ -20,14 +20,6 @@
   --radius: 12px;
   --shadow: 0 10px 28px rgba(39, 70, 53, .08);
   --shadow-soft: 0 3px 12px rgba(39, 70, 53, .06);
-  --tile-grass: #a5bc86;
-  --tile-forest: #7e9c72;
-  --tile-mountain: #7c9180;
-  --tile-water: #6ba49f;
-  --tile-spirit: #90c5b1;
-  --tile-path: #c9c599;
-  --map-sky-a: #d6e5d9;
-  --map-sky-b: #bdd4c4;
   --nav-bg: rgba(245, 246, 237, .96);
 }
 [data-theme="night"] {
@@ -38,9 +30,6 @@
   --cinnabar: #aac39a; --cinnabar-deep: #829c72;
   --jade: #a5c59e; --jade-light: #6f9d80;
   --gold: #cfb575; --gold-light: #cbbf88;
-  --tile-grass: #68845a; --tile-forest: #486d50; --tile-mountain: #536d62;
-  --tile-water: #3e807e; --tile-path: #8e9172;
-  --map-sky-a: #344e43; --map-sky-b: #244237;
   --nav-bg: rgba(29, 51, 43, .97);
 }
 body { background-image: radial-gradient(ellipse at 80% 0, #d3dfd1 0, transparent 65%), repeating-linear-gradient(0deg, rgba(40, 65, 46, .018) 0 1px, transparent 1px 4px); }
@@ -100,66 +89,6 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .sect-layout { grid-template-columns: minmax(0, 1fr) 306px; gap: 20px; }
 .mountain-column { min-width: 0; }
 .panel { box-shadow: var(--shadow-soft); }
-.map-panel { padding: 15px 15px 9px; }
-.map-head { padding-bottom: 14px; }
-.map-head h2 { font-size: 21px; font-weight: 500; }
-.map-head .eyebrow { font-size: 10px; }
-.map-frame { border-radius: 6px; border-color: #9aaf8b; }
-.scenery-panel { padding-bottom: 6px; }
-.scenery-view { position: relative; isolation: isolate; overflow: hidden; cursor: default; pointer-events: none; user-select: none; background: #c4d3c4; aspect-ratio: 3 / 2; }
-.scenery-svg { display: block; width: 100%; height: 100%; pointer-events: none; }
-.scenery-view { border-color: #a99870; box-shadow: inset 0 0 0 5px rgba(246, 239, 215, .62), inset 0 0 0 6px rgba(125, 111, 75, .26); }
-.scenery-svg { filter: saturate(.84) contrast(.96); }
-.scenery-svg .sc-peak path, .scenery-svg .sc-far path { stroke-linejoin: round; }
-.scenery-svg .sc-buildings { filter: drop-shadow(0 4px 5px rgba(30, 46, 34, .2)); }
-.scenery-svg .sc-clouds { opacity: .8; }
-.scenery-fallback { width: 100%; height: 100%; background: linear-gradient(180deg, #efe6cf, #a9c0ae); }
-.scenery-view::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(255, 248, 225, .08), transparent 34%, rgba(18, 38, 30, .16)); }
-.scenery-view::after { box-shadow: inset 0 0 45px rgba(26, 45, 34, .09); z-index: 2; pointer-events: none; }
-.scenery-view .weather-layer { z-index: 2; }
-.scenery-inscription { position: absolute; z-index: 3; top: 24px; left: 26px; display: flex; gap: 12px; writing-mode: vertical-rl; font-family: var(--serif); color: #f5edce; text-shadow: 0 1px 6px rgba(20, 40, 32, .8); line-height: 1.8; }
-.scenery-inscription b { font-weight: 400; font-size: 18px; letter-spacing: .25em; }
-.scenery-inscription span { font-size: 10px; letter-spacing: .25em; margin-top: 4px; opacity: .9; }
-.scenery-foot { padding: 10px 0 4px; text-align: center; font-family: var(--serif); font-size: 11px; letter-spacing: .2em; color: var(--muted); }
-[data-theme="night"] .scenery-svg { filter: brightness(.72) saturate(.82) hue-rotate(-6deg); }
-[data-theme="night"] .scenery-view::before { background: linear-gradient(180deg, rgba(18, 40, 48, .36), rgba(12, 30, 28, .14) 48%, rgba(6, 20, 18, .48)); }
-[data-theme="night"] .scenery-view::after { box-shadow: inset 0 0 60px rgba(7, 22, 18, .22); }
-.sc-mobile { display: none; }
-.sc-mobile-sun { display: none; }
-.scenery-svg .sc-mist-a { animation: scMistA 34s ease-in-out infinite alternate; }
-.scenery-svg .sc-mist-b { animation: scMistB 42s ease-in-out infinite alternate; }
-.scenery-svg .sc-mist-c { animation: scMistB 50s ease-in-out infinite alternate-reverse; }
-.scenery-svg .sc-cloud-a { animation: scCloudA 46s ease-in-out infinite alternate; }
-.scenery-svg .sc-cloud-b { animation: scCloudB 54s ease-in-out infinite alternate; }
-.scenery-svg .sc-cloud-c { animation: scCloudA 38s ease-in-out infinite alternate-reverse; }
-.scenery-svg .sc-crane { animation: scCrane 20s ease-in-out infinite; }
-.scenery-svg .sc-water { animation: scWater 6s ease-in-out infinite; }
-.scenery-svg .sc-lantern { animation: scLantern 4.5s ease-in-out infinite; }
-.scenery-svg .sc-mobile-sun { animation: scLantern 9s ease-in-out infinite; }
-.scenery-svg .sc-petal { animation: scPetal 13s linear infinite; }
-@keyframes scMistA { from { transform: translateX(-16px); } to { transform: translateX(18px); } }
-@keyframes scMistB { from { transform: translateX(14px); } to { transform: translateX(-18px); } }
-@keyframes scCloudA { from { transform: translateX(-10px); } to { transform: translateX(14px); } }
-@keyframes scCloudB { from { transform: translateX(12px); } to { transform: translateX(-14px); } }
-@keyframes scCrane { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(16px, -8px); } }
-@keyframes scWater { 0%, 100% { opacity: .55; } 50% { opacity: .9; } }
-@keyframes scLantern { 0%, 100% { opacity: .82; } 50% { opacity: 1; } }
-@keyframes scPetal { 0% { transform: translate(0, -8px) rotate(0deg); opacity: 0; } 12% { opacity: .8; } 100% { transform: translate(18px, 34px) rotate(80deg); opacity: 0; } }
-@media (max-width: 720px) {
-  .scenery-view { aspect-ratio: 4 / 5; }
-  .sc-mobile { display: inline; }
-  .sc-mobile-sun { display: inline; }
-  .scenery-inscription { top: 14px; left: 14px; gap: 7px; }
-  .scenery-inscription b { font-size: 13px; }
-  .scenery-inscription span { font-size: 8px; }
-  .scenery-foot { font-size: 10px; padding: 8px 0 3px; }
-}
-.map-svg { aspect-ratio: 764 / 468; }
-.map-distant-painting { pointer-events: none; }
-.terrain-brush { pointer-events: none; }
-.tile-edge { stroke: #5f8049; stroke-opacity: .15; stroke-width: .55; }
-.map-plaque { background: #f1f2dfdf; color: #3b5540; border-left-color: #6c845c; box-shadow: 0 3px 12px #3f62452b; }
-.map-plaque span { color: #64745c; }
 .building { filter: drop-shadow(0 3px 2px #24432f38); }
 .mountain-cranes { animation: birds 12s ease-in-out infinite alternate; pointer-events: none; }
 .side-column { gap: 14px; }
@@ -167,12 +96,6 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .stat { padding: 9px; border-radius: 5px; background: var(--panel-2); }
 .stat b { font-size: 21px; font-weight: 500; }
 .panel-head h3 { font-weight: 500; font-size: 17px; }
-.map-frame[data-season="summer"] { --tile-grass: #9bbf79; --tile-forest: #6e975f; }
-.map-frame[data-season="autumn"] { --tile-grass: #c4ba81; --tile-forest: #ab9b62; }
-.map-frame[data-season="winter"] { --tile-grass: #c5d4c4; --tile-forest: #a7bda9; --tile-mountain: #b2c0b6; --tile-water: #92b4b3; }
-[data-theme="night"] .map-frame[data-season="summer"] { --tile-grass: #5e8251; --tile-forest: #456d48; }
-[data-theme="night"] .map-frame[data-season="autumn"] { --tile-grass: #8c8b5c; --tile-forest: #7d794e; }
-[data-theme="night"] .map-frame[data-season="winter"] { --tile-grass: #899d8e; --tile-forest: #6e887b; --tile-mountain: #7e948c; --tile-water: #577f81; }
 .activity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
 .journey-card, .commission-card { padding: 20px; background: var(--panel); display: flex; flex-direction: column; align-items: stretch; }
 .chapter-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -256,13 +179,6 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
   .scenic-link { font-size: 11px; margin-top: 8px; gap: 12px; }
   .scenic-link span { font-size: 9px; }
   .scenic-seal { right: 12px; top: 14px; font-size: 10px; padding: 5px; }
-  .map-panel { padding: 10px 8px 8px; }
-  .map-head h2 { font-size: 17px; }
-  .map-head .eyebrow { font-size: 9px; }
-  .map-head { padding-bottom: 9px; }
-  .map-head-right { gap: 4px; max-width: 42%; }
-  .map-plaque { padding: 5px 7px; }
-  .map-plaque b { font-size: 11px; }
   .activity-grid { grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
   .journey-card, .commission-card { padding: 18px; }
   .chapter-goal { font-size: 12px; padding: 9px 0; }
