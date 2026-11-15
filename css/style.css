@@ -766,25 +766,12 @@ ul { margin: 0; padding-left: 1.1em; }
 .map-legend span { display: inline-flex; align-items: center; }
 .map-hint { color: var(--faint); font-size: 9px; }
 
-/* map SVG */
-.tile { cursor: default; }
-.tile > polygon:first-child { stroke: rgba(70, 82, 55, .22); stroke-width: .55; transition: fill .25s, stroke .2s; }
-.tile-grass > polygon:first-child { fill: var(--tile-grass); }
-.tile-forest > polygon:first-child { fill: var(--tile-forest); }
-.tile-mountain > polygon:first-child { fill: var(--tile-mountain); }
-.tile-water > polygon:first-child { fill: var(--tile-water); }
-.tile-spirit > polygon:first-child { fill: var(--tile-spirit); }
-.tile-edge { fill: none; stroke: rgba(255, 252, 238, .12); stroke-width: .5; pointer-events: none; }
-.tile:hover > polygon:first-child { stroke: rgba(255, 250, 232, .85); stroke-width: 1.3; }
-.tile-selected > polygon:first-child { stroke: var(--gold-light); stroke-width: 1.8; filter: brightness(1.08); }
-.tile.buildable { cursor: crosshair; }
-.tile.buildable > polygon:first-child { fill: color-mix(in srgb, var(--tile-grass) 65%, #d8e0a8); stroke: rgba(120, 145, 80, .7); stroke-dasharray: 3 3; animation: buildPulse 2.4s ease-in-out infinite; }
-.build-plus { fill: var(--cinnabar); font-family: var(--sans); font-size: 13px; font-weight: 700; opacity: .72; pointer-events: none; animation: buildPulse 1.8s ease-in-out infinite; }
-.path-tile { fill: var(--tile-path); stroke: color-mix(in srgb, var(--tile-path) 60%, #8e7654); stroke-width: .5; opacity: .9; }
+/* map SVG —— 有机地形，无网格 */
+.terrain { pointer-events: none; }
+.path-tile { fill: var(--tile-path); opacity: .82; }
 .tree, .rock { pointer-events: none; }
 .ripple { animation: ripple 4s ease-in-out infinite; }
-.building { cursor: pointer; transition: filter .18s ease; }
-.building:hover { filter: brightness(1.06) drop-shadow(0 4px 4px rgba(50, 35, 20, .2)); }
+.building { transition: filter .18s ease; }
 .building.selected { filter: drop-shadow(0 0 4px rgba(216, 185, 107, .95)) brightness(1.08); }
 .building .b-shadow { pointer-events: none; }
 .b-progress { fill: var(--cinnabar); font-family: var(--serif); font-size: 5.5px; }
@@ -795,9 +782,8 @@ ul { margin: 0; padding-left: 1.1em; }
 .furnace-glow { animation: glowPulse 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 .array-ring { animation: spin 18s linear infinite; transform-box: fill-box; transform-origin: center; }
 .array-core { animation: glowPulse 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.disciple-token { cursor: pointer; transition: filter .18s; }
+.disciple-token { transition: filter .18s; }
 .decor { pointer-events: none; }
-.disciple-token:hover { filter: brightness(1.12) drop-shadow(0 2px 2px rgba(40, 30, 20, .25)); }
 .disciple-token.is-player .t-robe { stroke: var(--gold-light); stroke-width: .8; }
 .disciple-token.selected { filter: drop-shadow(0 0 4px var(--gold-light)); }
 .token-name { fill: #332d24; font-family: var(--sans); font-size: 7px; paint-order: stroke; stroke: rgba(245, 238, 220, .85); stroke-width: 1.7px; pointer-events: none; }

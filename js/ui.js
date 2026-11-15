@@ -510,6 +510,34 @@
       '</g>';
   }
 
+  function terrainRegions(rows) {
+    var H = rows.length, W = rows[0] ? rows[0].length : 0;
+    var seen = [], out = [];
+    for (var y = 0; y < H; y++) seen.push(new Array(W));
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        if (seen[y][x]) continue;
+        var t = rows[y][x];
+        var stack = [[x, y]], cells = [];
+        seen[y][x] = true;
+        while (stack.length) {
+          var c = stack.pop();
+          cells.push({ x: c[0], y: c[1] });
+          var dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+          for (var i = 0; i < dirs.length; i++) {
+            var nx = c[0] + dirs[i][0], ny = c[1] + dirs[i][1];
+            if (ny >= 0 && ny < H && nx >= 0 && nx < W && !seen[ny][nx] && rows[ny][nx] === t) {
+              seen[ny][nx] = true;
+              stack.push([nx, ny]);
+            }
+          }
+        }
+        out.push({ type: t, cells: cells });
+      }
+    }
+    return out;
+  }
+
   function mapSvg() {
     var state = UI.game;
     if (!state) return '';
@@ -524,6 +552,7 @@
       '<radialGradient id="spiritGlow"><stop offset="0" stop-color="#b9e0cf" stop-opacity=".8"/><stop offset="1" stop-color="#b9e0cf" stop-opacity="0"/></radialGradient>' +
       '<radialGradient id="sunGlow"><stop offset="0" stop-color="var(--map-sun)" stop-opacity=".5"/><stop offset="1" stop-color="var(--map-sun)" stop-opacity="0"/></radialGradient>' +
       '<filter id="softGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+      '<filter id="terrainSoft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.6"/></filter>' +
       '</defs>');
     parts.push('<rect x="0" y="0" width="780" height="520" fill="url(#mapSky)"/>');
     parts.push('<image class="map-distant-painting" href="assets/qingya-panorama.jpg" x="0" y="-5" width="780" height="520" preserveAspectRatio="xMidYMid slice" opacity=".45"/>');
@@ -540,53 +569,48 @@
     parts.push('<path d="M52 262 L454 472 730 332" fill="none" stroke="#a8c4a6" stroke-width="1.4" opacity=".16"/>');
     parts.push('<path d="M64 276 L454 482 720 342" fill="none" stroke="#22423a" stroke-width="1.2" opacity=".2"/>');
     parts.push('<g class="cliff-moss" stroke="#5c7e58" stroke-width="1.3" fill="none" opacity=".55"><path d="M120 292 q2 12 -3 19 M250 356 q3 13 -2 22 M470 462 q1 10 -3 16 M590 398 q2 12 -2 19 M680 350 q2 9 -1 14"/></g>');
-    // 地块
+    // 有机地形：等距圆角菱形按地块绘制，柔边相接、每格细微色差，去掉方块网格的硬边感
     var rows = state.map || [];
-    for (var y = 0; y < rows.length; y++) {
-      for (var x = 0; x < rows[y].length; x++) {
-        var t = rows[y][x];
+    var colOf = { G: 'var(--tile-grass)', F: 'var(--tile-forest)', M: 'var(--tile-mountain)', W: 'var(--tile-water)', S: 'var(--tile-spirit)' };
+    terrainRegions(rows).forEach(function (r) {
+      var col = colOf[r.type] || 'var(--tile-grass)';
+      var cells = r.cells.map(function (c) {
+        var p = iso(c.x, c.y);
+        var seed = hashStr(c.x + ':' + c.y + ':' + state.sectName);
+        var vary = (seed % 3) - 1; // -1 暗 / 0 不变 / 1 亮
+        var pts = tilePoly(p.x, p.y, 4);
+        var hi = tilePoly(p.x, p.y, 13);
+        return '<polygon class="terrain-cell" points="' + pts + '" fill="' + col + '" stroke="' + col + '" stroke-width="7" stroke-linejoin="round"/>' +
+          '<polygon class="terrain-hi" points="' + hi + '" fill="#ffffff" opacity=".05"/>' +
+          (vary === 0 ? '' : '<polygon class="terrain-vary" points="' + pts + '" fill="' + (vary > 0 ? '#ffffff' : '#0d0d0d') + '" opacity=".04"/>');
+      }).join('');
+      parts.push('<g class="terrain terrain-' + (r.type || 'G') + '" filter="url(#terrainSoft)">' + cells + '</g>');
+    });
+    // 自然特征：水岸浮沫、莲叶、灵脉萤光、水光与林下暗影
+    rows.forEach(function (row, y) {
+      row.forEach(function (t, x) {
         var p = iso(x, y);
-        var cls = { G: 'grass', F: 'forest', M: 'mountain', W: 'water', S: 'spirit' }[t] || 'grass';
-        var selected = UI.tile && UI.tile.x === x && UI.tile.y === y ? ' tile-selected' : '';
         var seed = hashStr(x + ':' + y + ':' + state.sectName);
-        var varyTone = ((x * 31 + y * 17) % 5) / 130;
-        var tex = '';
         if (t === 'W') {
-          tex = '<polygon class="tile-sheen" points="' + tilePoly(p.x, p.y, 5) + '"/>';
+          parts.push('<ellipse cx="' + p.x + '" cy="' + p.y + '" rx="24" ry="10" fill="#eef5e4" opacity=".09"/>');
           var dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
           for (var di = 0; di < dirs.length; di++) {
             var nx = x + dirs[di][0], ny = y + dirs[di][1];
             var nt = rows[ny] ? rows[ny][nx] : null;
             if (nt && nt !== 'W') {
               var q = iso(nx, ny);
-              tex += foamArc(p.x, p.y, q.x, q.y, seed + nx * 13 + ny * 7);
+              parts.push(foamArc(p.x, p.y, q.x, q.y, seed + nx * 13 + ny * 7));
             }
           }
-          if (seed % 3 === 0) tex += lotusSvg(p.x + 7, p.y + 2, seed);
+          if (seed % 3 === 0) parts.push(lotusSvg(p.x + 7, p.y + 2, seed));
         } else if (t === 'S') {
-          tex = motesSvg(p.x, p.y, seed) +
-            lotusSvg(p.x - 13, p.y + 4, seed + 3) +
-            '<circle class="shimmer" cx="' + p.x + '" cy="' + p.y + '" r="16" fill="none" stroke="#e7f2da" stroke-width="1" opacity=".3"/>';
-        } else if (t === 'M') {
-          tex = '<path d="M' + (p.x - 15) + ',' + (p.y + 2) + ' l7,-9 l6,7 l5,-6 l4,5" fill="none" stroke="#6e6a5c" stroke-width="1.3" opacity=".6"/>' +
-            '<path d="M' + (p.x - 9) + ',' + (p.y + 5) + ' l12,-3" stroke="#7d786a" stroke-width="1" opacity=".4"/>';
-          if (seed % 2 === 0) tex += pineSvg(p.x + 13, p.y - 5, seed, 0.5);
+          parts.push(motesSvg(p.x, p.y, seed));
+          parts.push('<circle class="shimmer" cx="' + p.x + '" cy="' + p.y + '" r="16" fill="none" stroke="#e7f2da" stroke-width="1" opacity=".3"/>');
         } else if (t === 'F') {
-          tex = '<ellipse cx="' + p.x + '" cy="' + (p.y + 3) + '" rx="17" ry="6" fill="#31473a" opacity=".26"/>' +
-            '<path d="M' + (p.x - 12) + ',' + (p.y + 4) + ' q3,-5 6,0" stroke="#5c7a52" stroke-width="1.1" fill="none" opacity=".7"/>' +
-            '<circle cx="' + (p.x - 12) + '" cy="' + (p.y + 4) + '" r="1.5" fill="#c9b287" opacity=".8"/>';
-        } else {
-          tex = '<path d="M' + (p.x - 13) + ',' + (p.y + 2) + ' q2,-6 4,0 q2,-5 4,1 q2,-4 4,1" stroke="#68835a" stroke-width="1.1" fill="none" opacity=".6"/>';
-          if (seed % 4 === 0) tex += '<circle cx="' + (p.x + 9) + '" cy="' + (p.y - 1) + '" r="1.5" fill="' + (seed % 8 === 0 ? '#c97b6a' : '#e3d191') + '" opacity=".85"/>';
+          parts.push('<ellipse cx="' + p.x + '" cy="' + (p.y + 3) + '" rx="18" ry="7" fill="#31473a" opacity=".15"/>');
         }
-        parts.push('<g class="tile tile-' + cls + selected + '" data-tile="' + x + ',' + y + '">' +
-          '<polygon points="' + tilePoly(p.x, p.y, 0) + '"/>' +
-          '<polygon class="tile-vary" points="' + tilePoly(p.x, p.y, 0) + '" fill="' + ((x + y) % 2 ? '#ffffff' : '#24352b') + '" opacity="' + varyTone.toFixed(3) + '"/>' +
-          '<polygon class="tile-edge" points="' + tilePoly(p.x, p.y, 0) + '"/>' +
-          tex +
-          '</g>');
-      }
-    }
+      });
+    });
     // 小径
     (state.paths || []).forEach(function (pt) {
       var p = iso(pt[0], pt[1]);
@@ -994,7 +1018,7 @@
       '<button class="map-tool" data-action="map-reset" aria-label="复位">回</button>' +
       '</div>' +
       '</div>' +
-      '<div class="map-foot"><div class="map-legend"><span>' + dot('#8f6a43') + '宗门建筑</span><span>' + dot('#4e7c78') + '内门弟子</span><span>' + dot('#b08a4a') + '外门弟子</span><span>' + dot('#7fa3a2') + '水泽</span><span>' + dot('#b9d6c6') + '灵脉</span></div><span class="map-hint">点击建筑或弟子查看详情</span></div>' +
+      '<div class="map-foot"><div class="map-legend"><span>' + dot('#8f6a43') + '宗门建筑</span><span>' + dot('#4e7c78') + '内门弟子</span><span>' + dot('#b08a4a') + '外门弟子</span><span>' + dot('#7fa3a2') + '水泽</span><span>' + dot('#b9d6c6') + '灵脉</span></div><span class="map-hint">舆图仅供观览，建筑与弟子请从下方页签查看</span></div>' +
       '</section><div class="activity-grid">' + journeyCard() + commissionCard() + '</div></div>' +
 
       '<aside class="side-column">' +
@@ -2105,25 +2129,6 @@
       if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
       e.preventDefault();
     }, { passive: false });
-
-    // 地图点击：建筑 / 弟子 / 空地
-    document.addEventListener('click', function (e) {
-      if (!UI.game || UI.modalOpen) return;
-      var frame = e.target.closest('#map-frame');
-      if (!frame) return;
-      var bEl = e.target.closest('[data-building]');
-      if (bEl) { openBuilding(bEl.getAttribute('data-building')); return; }
-      var dEl = e.target.closest('[data-disciple]');
-      if (dEl) { openDisciple(dEl.getAttribute('data-disciple')); return; }
-      var tEl = e.target.closest('[data-tile]');
-      if (!tEl) return;
-      var xy = tEl.getAttribute('data-tile').split(',').map(Number);
-      UI.tile = { x: xy[0], y: xy[1] };
-      var terrain = E.terrainAt(UI.game, xy[0], xy[1]);
-      var names = { G: '草地', F: '林地', M: '山岩', W: '水泽', S: '灵脉' };
-      toast((E.buildingAt(UI.game, xy[0], xy[1]) ? '此处已有建筑' : '此处是' + (names[terrain] || '空地') + (E.isBuildable(UI.game, xy[0], xy[1]) ? '，可以营造' : '')) + '。');
-      renderSect();
-    });
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && UI.modalOpen) {
