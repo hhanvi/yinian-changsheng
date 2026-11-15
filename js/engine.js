@@ -2038,14 +2038,29 @@
       try { main = parseSave(localStorage.getItem(D.SAVE_KEY)); } catch (e) {}
       try { backup = parseSave(localStorage.getItem(D.SAVE_BACKUP_KEY)); } catch (e) {}
       if (main && backup) return (backup.lastSaved || 0) > (main.lastSaved || 0) ? backup : main;
-      return main || backup;
+      if (main || backup) return main || backup;
+
+      // 一次性迁移旧版 v2 存档；新代码只写 v3，旧页面无法再覆盖新进度。
+      var legacy = null;
+      (D.LEGACY_SAVE_KEYS || []).forEach(function (key) {
+        try {
+          var parsed = parseSave(localStorage.getItem(key));
+          if (parsed && (!legacy || (parsed.lastSaved || 0) > (legacy.lastSaved || 0))) legacy = parsed;
+        } catch (e) {}
+      });
+      if (legacy) {
+        E.save(legacy, true);
+        return legacy;
+      }
+      return null;
     } catch (e) { return null; }
   };
 
   E.hasSave = function () {
     try {
       if (typeof localStorage === 'undefined') return false;
-      return !!(localStorage.getItem(D.SAVE_KEY) || localStorage.getItem(D.SAVE_BACKUP_KEY));
+      if (localStorage.getItem(D.SAVE_KEY) || localStorage.getItem(D.SAVE_BACKUP_KEY)) return true;
+      return (D.LEGACY_SAVE_KEYS || []).some(function (key) { return !!localStorage.getItem(key); });
     } catch (e) { return false; }
   };
 
@@ -2054,6 +2069,7 @@
       if (typeof localStorage === 'undefined') return;
       localStorage.removeItem(D.SAVE_KEY);
       localStorage.removeItem(D.SAVE_BACKUP_KEY);
+      (D.LEGACY_SAVE_KEYS || []).forEach(function (key) { localStorage.removeItem(key); });
     } catch (e) {}
   };
 

@@ -8,8 +8,9 @@
   var D = {};
 
   D.VERSION = 2;
-  D.SAVE_KEY = 'yinian_sect_save_v2';
-  D.SAVE_BACKUP_KEY = 'yinian_sect_save_v2_backup';
+  D.SAVE_KEY = 'yinian_sect_save_v3';
+  D.SAVE_BACKUP_KEY = 'yinian_sect_save_v3_backup';
+  D.LEGACY_SAVE_KEYS = ['yinian_sect_save_v2', 'yinian_sect_save_v2_backup'];
   D.SETTINGS_KEY = 'yinian_sect_settings_v2';
   D.TITLE = '一念长生';
   D.SUBTITLE = '青崖山 · 宗门纪';

@@ -408,6 +408,41 @@ test('旧页面不能覆盖较新的存档', function () {
   });
 });
 
+test('新存档只写 v3，旧缓存页写 v2 也盖不掉新进度', function () {
+  withStorage(function () {
+    var current = newState(16);
+    current.resources.food = 888;
+    assert.strictEqual(E.save(current), true);
+    assert.ok(localStorage.getItem(D.SAVE_KEY), '应写入 v3 主存档');
+    assert.strictEqual(localStorage.getItem('yinian_sect_save_v2'), null, '不应再写 v2');
+
+    var staleTab = newState(17);
+    staleTab.resources.food = 1;
+    staleTab.lastSaved = Date.now() + 60000;
+    localStorage.setItem('yinian_sect_save_v2', JSON.stringify(staleTab));
+
+    var loaded = E.load();
+    assert.ok(loaded);
+    assert.strictEqual(loaded.resources.food, 888);
+  });
+});
+
+test('旧 v2 存档会自动迁移到 v3', function () {
+  withStorage(function () {
+    var legacy = newState(18);
+    legacy.resources.food = 456;
+    legacy.lastSaved = Date.now() - 5000;
+    localStorage.setItem('yinian_sect_save_v2', JSON.stringify(legacy));
+
+    var loaded = E.load();
+    assert.ok(loaded);
+    assert.strictEqual(loaded.resources.food, 456);
+    var migrated = JSON.parse(localStorage.getItem(D.SAVE_KEY));
+    assert.ok(migrated, '迁移后应写入 v3');
+    assert.strictEqual(migrated.resources.food, 456);
+  });
+});
+
 test('常驻历练会归来自动再出发并可叫停', function () {
   var s = newState(15);
   s.lastEventDay = 9999;
