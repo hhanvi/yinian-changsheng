@@ -134,6 +134,44 @@
     return null;
   };
   E.player = function (state) { return E.discipleById(state, state.playerId); };
+  E.isMaster = function (state, d) {
+    return !!(state && d && state.playerId && d.id === state.playerId && !d.dead);
+  };
+  E.mindState = function (d) {
+    var mood = d ? Number(d.mood) || 0 : 0;
+    if (mood >= 80) return { key: 'clear', label: '澄明', tone: 'good', desc: '心念澄澈，修行顺遂。' };
+    if (mood >= 60) return { key: 'calm', label: '平和', tone: 'calm', desc: '心境平和，进退有度。' };
+    if (mood >= 40) return { key: 'wander', label: '浮动', tone: 'warn', desc: '心有旁骛，修行稍缓。' };
+    if (mood >= 20) return { key: 'knot', label: '郁结', tone: 'bad', desc: '郁结难解，易生心魔。' };
+    return { key: 'lost', label: '失守', tone: 'bad', desc: '道心不稳，恐伤根基。' };
+  };
+  E.successors = function (state) {
+    return E.aliveDisciples(state).filter(function (d) {
+      return d.id !== state.playerId;
+    }).sort(function (a, b) {
+      if (a.role !== b.role) return a.role === 'inner' ? -1 : 1;
+      return E.power(b, state) - E.power(a, state);
+    });
+  };
+  E.chooseMaster = function (state, discipleId) {
+    if (state.ending) return { ok: false, msg: '山门已经走到尽头。' };
+    if (!state.pendingSuccession) return { ok: false, msg: '掌门尚在，无需另立。' };
+    var d = E.discipleById(state, discipleId);
+    if (!d || d.dead) return { ok: false, msg: '这位弟子已经不在山中。' };
+    if (d.job) {
+      var old = E.buildingById(state, d.job);
+      if (old) old.workers = old.workers.filter(function (id) { return id !== d.id; });
+    }
+    d.job = null;
+    d.jobMode = 'manual';
+    d.preferredJob = null;
+    d.title = '掌门';
+    if (d.role !== 'inner') d.role = 'inner';
+    state.playerId = d.id;
+    state.pendingSuccession = false;
+    E.log(state, d.name + '在祠堂前接过掌门印信，山门重立。', 'good');
+    return { ok: true, master: d };
+  };
 
   function techniqueForRoot(rootKey) {
     return ({ metal: 'jian', wood: 'qingmu', water: 'shui', fire: 'dan', earth: 'tu' })[rootKey] || 'yinqi';
@@ -395,6 +433,7 @@
   E.alerts = function (state) {
     var out = [];
     var st = E.sectStats(state);
+    if (state.pendingSuccession) out.push({ type: 'succession', text: '掌门之位空悬，需从弟子中另立掌门，山门才能继续运转。' });
     if (st.foodDays <= 3) out.push({ type: 'food', text: '存粮只够 ' + st.foodDays + ' 日，尽快安排灵田或去坊市买粮。' });
     if (st.population > st.housing) out.push({ type: 'housing', text: '弟子居床位不足，弟子的精力恢复会变慢。' });
     if (!st.kitchen) out.push({ type: 'kitchen', text: '膳堂无人掌勺，粮食消耗增加，弟子心境也会受影响。' });
@@ -513,6 +552,7 @@
       rngSeed: seed || 123456789,
       sectName: opts.sectName || '青崖宗',
       playerId: null,
+      pendingSuccession: false,
       map: D.MAP.map(function (row) { return row.split(''); }),
       paths: D.PATHS.map(function (p) { return p.slice(); }),
       buildings: [],
@@ -551,7 +591,8 @@
         days: 0, battlesWon: 0, battlesLost: 0, recruited: 0, promoted: 0,
         missions: 0, pillsMade: 0, maxRenown: 10, breakthroughs: 0, built: 0
       },
-      guide: { seen: false }
+      guide: { seen: false },
+      chronicle: { chapters: [], commissions: [] }
     };
 
     var origin = D.ORIGINS[opts.origin] || D.ORIGINS.orphan;
@@ -573,6 +614,8 @@
       autoBreakthrough: true
     });
     player.title = '掌门';
+    player.jobMode = 'manual';
+    player.preferredJob = null;
     player.bio = origin.desc;
     player.originKey = origin.key;
     player.originPower = origin.effects && origin.effects.power || 0;
@@ -609,13 +652,6 @@
       }
     }
 
-    // 掌门入静室
-    var med = state.buildings.find(function (b) { return b.type === 'meditation'; });
-    if (med) {
-      med.workers.push(player.id);
-      player.job = med.id;
-    }
-
     state.weather = 'clear';
     E.aliveDisciples(state).forEach(function (d) {
       d.relations = {};
@@ -623,7 +659,7 @@
     E.aliveDisciples(state).forEach(function (d) { linkRelations(state, d); });
     E.refreshMarket(state);
     E.log(state, '青崖山上立起山门。' + D.STORY.grade, 'good');
-    E.log(state, '掌门' + player.name + '入静室闭关，三名外门弟子各自领了差事。', 'system');
+    E.log(state, '掌门' + player.name + '坐镇山门，三名外门弟子各自领了差事。', 'system');
     return state;
   };
 
@@ -876,17 +912,18 @@
     });
     E.log(state, text, 'warn');
     if (d.id === state.playerId) {
-      var successor = E.innerDisciples(state).filter(function (x) { return x.id !== d.id && !x.dead; }).sort(function (a, b) { return E.power(b, state) - E.power(a, state); })[0];
-      if (successor) {
-        state.playerId = successor.id;
-        successor.title = '掌门';
-        E.log(state, successor.name + '在祠堂前接任掌门。山门不能一日无主。', 'good');
+      d.title = '先掌门';
+      state.playerId = null;
+      if (E.aliveDisciples(state).length) {
+        state.pendingSuccession = true;
+        E.log(state, d.name + '坐化。山门无主，需从弟子中另立掌门。', 'warn');
       } else {
-        state.ending = { type: 'ruin', title: '薪火断绝', text: '掌门坐化，山中再无内门弟子。青崖宗的灯，灭了。', day: state.day };
+        state.pendingSuccession = false;
+        state.ending = { type: 'ruin', title: '薪火断绝', text: '掌门坐化，山中再无可承衣钵之人。青崖宗的灯，灭了。', day: state.day };
         E.log(state, '青崖宗断了传承。', 'warn');
       }
     }
-    if (E.aliveDisciples(state).length === 0) {
+    if (!state.ending && E.aliveDisciples(state).length === 0) {
       state.ending = { type: 'ruin', title: '山门寂寂', text: '最后一个弟子也走了。山风穿过空荡荡的静室，炉火一点点冷下去。', day: state.day };
     }
   }
@@ -936,7 +973,7 @@
   /* ------------------------------------------------------------------ */
   E.tick = function (state) {
     if (!state || state.ending) return state;
-    if (state.pendingEvent || state.pendingResult || state.pendingReport) return state;
+    if (state.pendingSuccession || state.pendingEvent || state.pendingResult || state.pendingReport) return state;
     state.day++;
     state.stats.days = (state.stats.days || 0) + 1;
 
@@ -968,7 +1005,7 @@
 
     // 自动安排空闲弟子：按灵根、性情与空缺择最合适的差事
     E.aliveDisciples(state).forEach(function (d) {
-      if (d.missionId || d.job || d.jobMode === 'manual') return;
+      if (E.isMaster(state, d) || d.missionId || d.job || d.jobMode === 'manual') return;
       E.autoAssign(state, d.id);
     });
 
@@ -1019,7 +1056,7 @@
 
   E.tickDays = function (state, days) {
     for (var i = 0; i < days; i++) {
-      if (state.ending || state.pendingEvent || state.pendingResult || state.pendingReport) break;
+      if (state.ending || state.pendingSuccession || state.pendingEvent || state.pendingResult || state.pendingReport) break;
       E.tick(state);
     }
     return state;
@@ -1155,6 +1192,7 @@
     var auto = !!opts.auto;
     var d = E.discipleById(state, discipleId);
     if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
+    if (E.isMaster(state, d)) return { ok: false, msg: '掌门坐镇山门，不领差事。' };
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
     var b = null, def = null;
     if (buildingId) {
@@ -1188,7 +1226,7 @@
   };
 
   E.eligibleJobs = function (state, d) {
-    if (!d || d.dead) return [];
+    if (!d || d.dead || E.isMaster(state, d)) return [];
     return state.buildings.filter(function (b) {
       var def = E.def(b);
       if (!def || !def.slots || b.construction > 0) return false;
@@ -1199,7 +1237,7 @@
 
   /* 给弟子挑一份最合适的差事：内门优先静室，外门按灵根与空缺补位。 */
   E.recommendedJob = function (state, d) {
-    if (!d || d.dead) return null;
+    if (!d || d.dead || E.isMaster(state, d)) return null;
     var candidates = state.buildings.filter(function (b) {
       var def = E.def(b);
       if (!def || !def.slots || b.construction > 0) return false;
@@ -1234,6 +1272,7 @@
   E.autoAssign = function (state, discipleId) {
     var d = E.discipleById(state, discipleId);
     if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
+    if (E.isMaster(state, d)) return { ok: false, msg: '掌门坐镇山门，不领差事。' };
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
     var b = E.recommendedJob(state, d);
     if (!b) return { ok: false, msg: '山中暂无合适差事。' };
@@ -1251,7 +1290,7 @@
     var room = E.slotsOf(b) - b.workers.length;
     if (room <= 0) return { ok: false, msg: '此处已满员。' };
     var pool = E.aliveDisciples(state).filter(function (d) {
-      return !d.missionId && !d.job && d.jobMode !== 'manual' && d.id !== b.workers[0] && canWorkAt(b, d);
+      return !E.isMaster(state, d) && !d.missionId && !d.job && d.jobMode !== 'manual' && d.id !== b.workers[0] && canWorkAt(b, d);
     }).sort(function (a, c) {
       var sa = E.aptitude(a) + (a.traits || []).length * 0.2;
       var sc = E.aptitude(c) + (c.traits || []).length * 0.2;
@@ -1394,6 +1433,7 @@
 
   E.startMission = function (state, missionId, discipleIds, opts) {
     opts = opts || {};
+    if (state.pendingSuccession) return { ok: false, msg: '山门无主，先立掌门再议历练。' };
     var m = D.MISSIONS.find(function (x) { return x.id === missionId; });
     if (!m) return { ok: false, msg: '没有这个地方。' };
     if (!E.missionReachable(state, m)) return { ok: false, msg: '声望不足，尚无人知晓这条山路。' };
@@ -1412,6 +1452,7 @@
     for (var i = 0; i < discipleIds.length; i++) {
       var d = E.discipleById(state, discipleIds[i]);
       if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
+      if (E.isMaster(state, d)) return { ok: false, msg: '掌门需坐镇山门，不可远行。' };
       if (d.missionId) return { ok: false, msg: '该弟子已经在外。' };
       if (d.health < 30) return { ok: false, msg: d.name + '伤势未愈，不宜远行。' };
       if (!m.allowOuter && d.role !== 'inner') return { ok: false, msg: '此地凶险，外门弟子去不得。' };
@@ -1858,21 +1899,17 @@
     var discount = marketMultiplier(state);
     var stock = [];
     var resources = [
-      { id: 'food', qty: randInt(state, 30, 60), base: 4 },
-      { id: 'wood', qty: randInt(state, 20, 45), base: 3 },
-      { id: 'stone', qty: randInt(state, 20, 45), base: 3 },
-      { id: 'herbs', qty: randInt(state, 6, 16), base: 10 }
+      { id: 'food', qty: randInt(state, 40, 80), base: 4 },
+      { id: 'wood', qty: randInt(state, 30, 60), base: 3 },
+      { id: 'stone', qty: randInt(state, 30, 60), base: 3 },
+      { id: 'herbs', qty: randInt(state, 10, 24), base: 10 }
     ];
     resources.forEach(function (r) {
       var seasonal = r.id === 'food' && season.key === 'winter' ? 1.2 : 1;
       stock.push({ kind: 'resource', id: r.id, qty: r.qty, price: Math.max(1, Math.round(r.base * seasonal * discount)) });
     });
-    var pills = ['huichun', 'juqi'];
-    if (E.hasResearch(state, 'dandao')) pills.push('pojing');
-    if (E.hasResearch(state, 'yangshen')) pills.push('ningshen');
-    if (E.hasResearch(state, 'xisui')) pills.push('xisui');
-    pills.forEach(function (p) {
-      if (chance(state, 0.75)) {
+    ['huichun', 'juqi', 'pojing', 'ningshen', 'xisui'].forEach(function (p) {
+      if (chance(state, 0.85)) {
         stock.push({ kind: 'pill', id: p, qty: p === 'xisui' ? 1 : randInt(state, 1, 3), price: Math.round(D.PILLS[p].price * discount) });
       }
     });
@@ -1906,15 +1943,27 @@
   };
 
   E.sellPrices = { food: 2, wood: 2, stone: 2, herbs: 6 };
+  E.sellPriceOf = function (id) {
+    if (E.sellPrices[id]) return E.sellPrices[id];
+    if (D.PILLS[id]) return Math.max(1, Math.round(D.PILLS[id].price * 0.5));
+    return 0;
+  };
   E.marketSell = function (state, resourceId, qty) {
-    var base = E.sellPrices[resourceId];
-    if (!base) return { ok: false, msg: '这东西坊市不收。' };
     qty = Math.max(1, Math.floor(qty || 1));
+    var base = E.sellPriceOf(resourceId);
+    if (!base) return { ok: false, msg: '这东西坊市不收。' };
+    if (D.PILLS[resourceId]) {
+      if ((state.pills[resourceId] || 0) < qty) return { ok: false, msg: '丹药库存不足。' };
+      var pillPrice = base * qty;
+      state.pills[resourceId] -= qty;
+      state.resources.stones += pillPrice;
+      return { ok: true, price: pillPrice, kind: 'pill' };
+    }
     if ((state.resources[resourceId] || 0) < qty) return { ok: false, msg: '库存不足。' };
-    var price = Math.round(base * qty);
+    var price = base * qty;
     state.resources[resourceId] -= qty;
     state.resources.stones += price;
-    return { ok: true, price: price };
+    return { ok: true, price: price, kind: 'resource' };
   };
 
   /* ------------------------------------------------------------------ */
@@ -1950,6 +1999,10 @@
       if (typeof state.stats[k] !== 'number') state.stats[k] = 0;
     });
     state.guide = state.guide && typeof state.guide === 'object' ? state.guide : { seen: false };
+    state.chronicle = state.chronicle && typeof state.chronicle === 'object' ? state.chronicle : {};
+    ['chapters', 'commissions'].forEach(function (key) {
+      state.chronicle[key] = Array.isArray(state.chronicle[key]) ? state.chronicle[key].filter(function (id) { return typeof id === 'string'; }) : [];
+    });
     state.lastEventDay = Number(state.lastEventDay) || 0;
     state.lastSaved = Number(state.lastSaved) || 0;
     state.day = Number(state.day) || 1;
@@ -1984,7 +2037,26 @@
       order.enabled = order.enabled !== false;
       order.nextTryDay = Number(order.nextTryDay) || 0;
     });
-    if (!state.playerId && state.disciples.length) state.playerId = state.disciples[0].id;
+    state.pendingSuccession = !!state.pendingSuccession;
+    var master = state.playerId ? state.disciples.find(function (d) { return d.id === state.playerId; }) : null;
+    if (!master || master.dead) {
+      state.playerId = null;
+      if (!state.ending && state.disciples.some(function (d) { return !d.dead; })) state.pendingSuccession = true;
+    }
+    if (state.playerId) {
+      var currentMaster = state.disciples.find(function (d) { return d.id === state.playerId; });
+      if (currentMaster && !currentMaster.dead) {
+        currentMaster.role = 'inner';
+        currentMaster.title = '掌门';
+        currentMaster.job = null;
+        currentMaster.jobMode = 'manual';
+        currentMaster.preferredJob = null;
+        state.pendingSuccession = false;
+        state.buildings.forEach(function (b) {
+          b.workers = b.workers.filter(function (id) { return id !== currentMaster.id; });
+        });
+      }
+    }
     return state;
   };
 

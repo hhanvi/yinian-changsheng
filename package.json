@@ -1,10 +1,10 @@
 {
   "name": "yinian-changsheng",
-  "version": "2.2.1",
+  "version": "2.3.1",
   "private": true,
   "description": "一念长生 · 宗门篇：适配手机的宗门修仙模拟游戏",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/engine.test.js"
+    "test": "node tests/engine.test.js && node tests/progression.test.js"
   }
 }

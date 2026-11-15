@@ -483,4 +483,58 @@ test('手动待命不会被每日自动安排覆盖', function () {
   assert.strictEqual(d.job, null);
 });
 
+test('坊市可以卖丹药，并按自定义数量结算', function () {
+  var s = newState(18);
+  s.resources.stones = 0;
+  s.pills.huichun = 3;
+  assert.strictEqual(E.sellPriceOf('huichun'), Math.round(D.PILLS.huichun.price * 0.5));
+  var sold = E.marketSell(s, 'huichun', 2);
+  assert.ok(sold.ok);
+  assert.strictEqual(s.pills.huichun, 1);
+  assert.strictEqual(s.resources.stones, E.sellPriceOf('huichun') * 2);
+
+  s.resources.stones = 1000;
+  var idx = s.market.stock.findIndex(function (it) { return it.kind === 'resource' && it.qty >= 3; });
+  assert.ok(idx >= 0);
+  var item = s.market.stock[idx];
+  var before = item.qty;
+  var bought = E.marketBuy(s, idx, 3);
+  assert.ok(bought.ok);
+  assert.strictEqual(item.qty, before - 3);
+});
+
+test('掌门不领差事，也不能随队历练', function () {
+  var s = newState(19);
+  var master = E.player(s);
+  var room = s.buildings.find(function (b) { return b.type === 'meditation'; });
+  assert.strictEqual(E.assign(s, master.id, room.id).ok, false);
+  assert.deepStrictEqual(E.eligibleJobs(s, master), []);
+  assert.strictEqual(E.autoAssign(s, master.id).ok, false);
+  assert.strictEqual(E.startMission(s, 'backhill', [master.id]).ok, false);
+});
+
+test('掌门阵亡后需要手动另立，不会自动继任', function () {
+  var s = newState(20);
+  var master = E.player(s);
+  master.dead = true;
+  master.health = 0;
+  E.normalizeState(s);
+  assert.strictEqual(s.playerId, null);
+  assert.strictEqual(s.pendingSuccession, true);
+  var heir = E.successors(s)[0];
+  assert.ok(heir);
+  assert.ok(E.chooseMaster(s, heir.id).ok);
+  assert.strictEqual(s.playerId, heir.id);
+  assert.strictEqual(s.pendingSuccession, false);
+  assert.strictEqual(heir.job, null);
+});
+
+test('道心状态按心境分段显示', function () {
+  assert.strictEqual(E.mindState({ mood: 90 }).label, '澄明');
+  assert.strictEqual(E.mindState({ mood: 70 }).label, '平和');
+  assert.strictEqual(E.mindState({ mood: 50 }).label, '浮动');
+  assert.strictEqual(E.mindState({ mood: 30 }).label, '郁结');
+  assert.strictEqual(E.mindState({ mood: 10 }).label, '失守');
+});
+
 console.log('\n' + passed + ' 项测试通过。\n');

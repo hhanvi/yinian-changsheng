@@ -40,7 +40,7 @@
   };
 
   var TILE_W = 64, TILE_H = 32, ORIGIN_X = 326, ORIGIN_Y = 98;
-  var MAP_BASE = { x: 28, y: 38, w: 724, h: 414 };
+  var MAP_BASE = { x: 8, y: 24, w: 764, h: 468 };
 
   /* ------------------------------------------------------------------ */
   /* 工具                                                               */
@@ -132,7 +132,7 @@
     UI.settings.theme = theme === 'night' ? 'night' : 'paper';
     document.documentElement.setAttribute('data-theme', UI.settings.theme);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', UI.settings.theme === 'night' ? '#121817' : '#e8dec9');
+    if (meta) meta.setAttribute('content', UI.settings.theme === 'night' ? '#142822' : '#e4ebe0');
   }
 
   function saveNow(force) {
@@ -457,9 +457,13 @@
       '<filter id="softGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
       '</defs>');
     parts.push('<rect x="0" y="0" width="780" height="520" fill="url(#mapSky)"/>');
+    parts.push('<image class="map-distant-painting" href="assets/qingya-panorama.jpg" x="0" y="-5" width="780" height="520" preserveAspectRatio="xMidYMid slice" opacity=".45"/>');
     // 远山
-    parts.push('<path d="M-40 175 Q90 74 190 154 T410 130 T640 158 Q720 120 830 170 L830 0 L-40 0 Z" fill="var(--map-hill-a)" opacity=".8"/>');
-    parts.push('<path d="M-40 205 Q120 126 250 187 T500 160 T830 190 L830 80 Q710 148 640 110 T410 100 T190 128 Q70 160 -40 118 Z" fill="var(--map-hill-b)" opacity=".65"/>');
+    parts.push('<path d="M-40 500 L-40 145 Q55 85 120 165 L180 82 250 190 330 144 410 225 530 120 615 205 750 95 830 165 830 500 Z" fill="var(--map-hill-a)" opacity=".24"/>');
+    // 石台侧壁与投影，把舆图托成云海中的一座山台。
+    parts.push('<ellipse cx="390" cy="402" rx="310" ry="28" fill="#183e38" opacity=".13"/>');
+    parts.push('<path d="M38 242 L326 98 742 306 454 450 38 242 L38 267 454 480 742 336 742 306 454 450 38 242" fill="#406659" stroke="#57766a" stroke-width="1"/>');
+    parts.push('<path d="M38 252 L454 462 742 318 M90 284 l15 30 M180 330 l8 29 M280 382 l12 30 M390 438 l10 28 M530 422 l-4 28 M630 372 l-8 24" fill="none" stroke="#96b6a1" stroke-width="2" opacity=".4"/>');
     // 地块
     var rows = state.map || [];
     for (var y = 0; y < rows.length; y++) {
@@ -471,6 +475,7 @@
         parts.push('<g class="tile tile-' + cls + selected + '" data-tile="' + x + ',' + y + '">' +
           '<polygon points="' + tilePoly(p.x, p.y, 0) + '"/>' +
           '<polygon class="tile-edge" points="' + tilePoly(p.x, p.y, 0) + '"/>' +
+          (t === 'G' || t === 'F' ? '<path class="terrain-brush" d="M' + (p.x - 19) + ',' + (p.y + 1) + ' l16,7 m0,-12 l18,8" fill="none" stroke="' + ((x + y) % 2 ? '#cee0b2' : '#365d41') + '" opacity=".1" stroke-width="4"/>' : '') +
           '</g>');
       }
     }
@@ -484,7 +489,7 @@
     rows.forEach(function (row, yy) {
       row.forEach(function (t, xx) {
         var p = iso(xx, yy);
-        var seed = hashStr(xx + ':' + yy + ':' + state.rngSeed);
+        var seed = hashStr(xx + ':' + yy + ':' + state.sectName);
         if (t === 'F') {
           parts.push(treeSvg(p.x - 8, p.y + 2, seed, 0.9 + (seed % 4) * 0.08));
           if (seed % 3 === 0) parts.push(treeSvg(p.x + 10, p.y - 3, seed + 7, 0.7));
@@ -511,6 +516,7 @@
     }).forEach(function (d) { parts.push(tokenSvg(d)); });
     // 云影
     parts.push('<g class="cloud-shadows"><ellipse cx="180" cy="250" rx="130" ry="34" fill="#fff" opacity=".13"/><ellipse cx="560" cy="345" rx="160" ry="40" fill="#fff" opacity=".11"/><ellipse cx="420" cy="130" rx="100" ry="24" fill="#fff" opacity=".1"/></g>');
+    parts.push('<g class="mountain-cranes" fill="none" stroke="#31554e" stroke-width="1.3" opacity=".65"><path d="M560 100 q5 -5 10 0 q5 -5 10 0 M590 88 q4 -4 8 0 q4 -4 8 0 M610 108 q3 -3 6 0 q3 -3 6 0"/></g>');
     parts.push('</svg>');
     return parts.join('');
   }
@@ -622,10 +628,10 @@
       '<div class="landing-inner">' +
       '<section class="landing-copy">' +
       '<div class="landing-brand"><span class="brand-seal large">念</span><span>青崖山 · 宗门纪</span></div>' +
-      '<p class="eyebrow">FOUND A SECT · SEEK THE WAY</p>' +
+      '<p class="landing-edition">青绿山水卷 · 宗门经营</p>' +
       '<h1>一念长生</h1>' +
       '<p class="landing-sub">从三间茅屋，到一座仙门。</p>' +
-      '<p class="landing-intro">旧宗覆灭，你带着半卷残经与几名弟子，在青崖山重新立下山门。让外门弟子种田烧饭，让内门弟子吐纳修行；修屋、炼丹、参研、历练，等一个山门钟声响彻天下的日子。</p>' +
+      '<p class="landing-intro">半卷残经，几名弟子，一座等你点亮的山门。<br>春耕秋藏，炼丹问道，在人间烟火里，走一段长生路。</p>' +
       '<div class="landing-actions">' +
       (hasSave ? '<button class="btn btn-primary btn-lg" data-action="continue">继续前缘</button><button class="btn btn-ghost btn-lg" data-action="new-game">重开山门</button>' : '<button class="btn btn-primary btn-lg" data-action="new-game">开宗立派</button><button class="btn btn-ghost btn-lg" data-action="help">玩法说明</button>') +
       '</div>' +
@@ -636,7 +642,7 @@
       '</div>' +
       '<p class="landing-foot">原创网页作品 · 适配手机 · 存档保存在本机 · 无需安装</p>' +
       '</section>' +
-      '<section class="landing-art">' + landingArt() + '<div class="landing-stamp">青崖<br>山门</div></section>' +
+      '<div class="landscape-inscription" aria-hidden="true">山中无甲子<br>一念即长生<span>青崖山记</span></div>' +
       '</div></div>';
   }
 
@@ -770,7 +776,6 @@
       sect: (UI.game.pendingEvent ? 1 : 0) + (st.foodDays <= 3 ? 1 : 0),
       disciples: E.aliveDisciples(UI.game).filter(function (d) { return d.exp >= E.expNeed(d) && d.realm < 9; }).length,
       build: 0,
-      affairs: E.aliveDisciples(UI.game).filter(function (d) { return d.role === 'outer' && d.realm === 0 && d.layer >= 2; }).length,
       market: 0
     };
     document.getElementById('bottom-nav').innerHTML = D.UI.nav.map(function (n) {
@@ -802,6 +807,36 @@
   /* ------------------------------------------------------------------ */
   /* 宗门视图                                                           */
   /* ------------------------------------------------------------------ */
+  function resourceText(items) {
+    return Object.keys(items).map(function (key) {
+      return (D.RESOURCES[key] ? D.RESOURCES[key].name : key === 'insight' ? '悟道' : key) + ' ' + items[key];
+    }).join(' · ');
+  }
+
+  function chapterGoals(chapter) {
+    return '<div class="chapter-goals">' + chapter.goals.map(function (g) {
+      return '<button class="chapter-goal ' + (g.done ? 'done' : '') + '" data-action="journey-go" data-tab="' + g.tab + '" data-affairs="' + g.affairs + '"><span class="goal-tick">' + (g.done ? '✓' : '○') + '</span><span>' + h(g.text) + '</span><small>' + Math.min(g.current, g.target) + '/' + g.target + '</small></button>';
+    }).join('') + '</div>';
+  }
+
+  function journeyCard() {
+    var chapters = E.journey(UI.game), current = chapters.find(function (c) { return !c.claimed; });
+    if (!current) return '<section class="panel journey-card"><span class="chapter-label">宗门长卷 · 七章已成</span><h3>长生有期，山门长明。</h3><p>回望青崖，一草一木皆是来路。</p><button class="text-btn" data-action="open-journey">回看宗门长卷 ›</button></section>';
+    return '<section class="panel journey-card"><div class="chapter-top"><span class="chapter-label">宗门长卷 · 第' + '一二三四五六七'.charAt(current.number - 1) + '章</span><button class="text-btn" data-action="open-journey">全卷 ›</button></div><h3>' + h(current.title) + '</h3><p class="chapter-subtitle">' + h(current.subtitle) + '</p>' + chapterGoals(current) + '<div class="chapter-reward"><small>本章馈赠</small><span>' + h(resourceText(current.reward)) + '</span></div><button class="btn ' + (current.ready ? 'btn-primary' : 'btn-ghost') + ' claim-button" data-action="claim-chapter" data-id="' + current.id + '"' + (current.ready ? '' : ' disabled') + '>' + (current.ready ? '领取本章馈赠' : '达成条件后领取 · ' + current.progress + '%') + '</button></section>';
+  }
+
+  function commissionCard() {
+    var c = E.commission(UI.game);
+    return '<section class="panel commission-card"><div class="chapter-top"><span class="chapter-label">四时委托 · ' + c.season + '</span><span class="small muted">' + c.daysLeft + ' 日后换季</span></div><h3>' + h(c.title) + '</h3><p class="commission-text">' + h(c.text) + '</p><div class="commission-exchange"><div><small>交付物资</small><b>' + h(resourceText(c.cost)) + '</b></div><span aria-hidden="true">⇢</span><div><small>山下回礼</small><b>' + h(resourceText(c.reward)) + '</b></div></div><button class="btn btn-ghost claim-button" data-action="fulfill-commission" data-id="' + c.id + '"' + (c.claimed || !c.affordable ? ' disabled' : '') + '>' + (c.claimed ? '本季已结清' : c.affordable ? '交付物资，收取回礼' : '物资不足，待备齐后交付') + '</button><p class="commission-note">每个游戏季节可完成一次</p></section>';
+  }
+
+  function openJourney() {
+    var chapters = E.journey(UI.game);
+    openModal('<div class="modal-head"><div><p class="chapter-label">青崖山记</p><h2>宗门长卷</h2><p class="muted">从一缕炊烟，到万家灯火。每一章，都有山门的来路。</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="journey-scroll">' + chapters.map(function (c) {
+      return '<section class="journey-entry ' + (c.claimed ? 'is-claimed' : c.locked ? 'is-locked' : 'is-current') + '"><div class="journey-number">' + '一二三四五六七'.charAt(c.number - 1) + '</div><div class="journey-entry-body"><div class="chapter-top"><h3>' + h(c.title) + '</h3><span class="badge">' + (c.claimed ? '已落笔' : c.locked ? '前章未完' : c.ready ? '可领取' : '进行中') + '</span></div><p>' + h(c.claimed ? c.story : c.subtitle) + '</p>' + chapterGoals(c) + '<small class="muted">馈赠：' + h(resourceText(c.reward)) + '</small>' + (c.ready ? '<button class="btn btn-primary btn-sm" data-action="claim-chapter" data-id="' + c.id + '">领取馈赠</button>' : '') + '</div></section>';
+    }).join('') + '</div>', { key: 'journey', class: 'journey-modal' });
+  }
+
   function renderSect() {
     if (!UI.game) return;
     var st = stats();
@@ -818,14 +853,12 @@
     });
     if (idle) tasks.push({ text: E.def(idle).name + '无人值守，产出停摆。', tab: 'sect', label: '查看建筑', buildingId: idle.id });
     if (!tasks.length) tasks.push({ text: '山门安稳。当前目标是晋为' + (st.nextGrade ? st.nextGrade.name : '仙道圣地') + '。', tab: 'affairs', label: '安排事务' });
-    var guide = E.guideTasks(UI.game);
-    var guideDone = guide.filter(function (x) { return x.done; }).length;
     var topDisciples = E.aliveDisciples(UI.game).sort(function (a, b) { return E.power(b, UI.game) - E.power(a, UI.game); }).slice(0, 3);
 
-    view.innerHTML = '<div class="sect-layout">' +
+    view.innerHTML = '<section class="scenic-header" aria-label="青崖山水"><div class="scenic-copy"><span class="scenic-kicker">青崖山 · ' + d.season.full + '</span><h2>山有归处，心向长生。</h2><p>' + h(d.season.desc) + '</p><button class="scenic-link" data-action="open-journey">展开宗门长卷 <span>七章仙途 ›</span></button></div><div class="scenic-seal" aria-hidden="true">青崖<br>山居</div></section><div class="sect-layout"><div class="mountain-column">' +
       '<section class="map-panel panel">' +
-      '<div class="map-head"><div><p class="eyebrow">QINGYA MOUNTAIN</p><h2>' + h(UI.game.sectName) + ' · 山门舆图</h2></div><div class="map-head-right"><span class="weather-chip">' + h(weather().glyph) + ' · ' + h(d.season.full) + '</span><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span></div></div>' +
-      '<div class="map-frame" id="map-frame">' +
+      '<div class="map-head"><div><p class="eyebrow">一山一门 · 一草一木</p><h2>' + h(UI.game.sectName) + ' · 山门舆图</h2></div><div class="map-head-right"><span class="weather-chip">' + h(weather().glyph) + ' · ' + h(d.season.full) + '</span><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span></div></div>' +
+      '<div class="map-frame" id="map-frame" data-season="' + d.season.key + '">' +
       mapSvg() +
       weatherLayer() +
       '<div class="map-plaque"><b>青崖山</b><span>云深不知处</span></div>' +
@@ -836,7 +869,7 @@
       '</div>' +
       '</div>' +
       '<div class="map-foot"><div class="map-legend"><span>' + dot('#8f6a43') + '宗门建筑</span><span>' + dot('#4e7c78') + '内门弟子</span><span>' + dot('#b08a4a') + '外门弟子</span><span>' + dot('#7fa3a2') + '水泽</span><span>' + dot('#b9d6c6') + '灵脉</span></div><span class="map-hint">点击建筑或弟子查看详情</span></div>' +
-      '</section>' +
+      '</section><div class="activity-grid">' + journeyCard() + commissionCard() + '</div></div>' +
 
       '<aside class="side-column">' +
       (selected ? selectedBuildingCard(selected) : '') +
@@ -862,12 +895,6 @@
         return '<div class="objective"><span class="objective-dot"></span><p>' + h(t.text) + '</p><button class="btn btn-ghost btn-sm" data-action="task-go" data-tab="' + t.tab + '" data-disciple="' + (t.discipleId || '') + '" data-building="' + (t.buildingId || '') + '">' + h(t.label) + '</button></div>';
       }).join('') +
       '</div>' +
-
-      (guideDone < guide.length ? '<div class="panel guide-panel"><div class="panel-head"><h3>初立山门</h3><span class="panel-mark">' + guideDone + '/' + guide.length + '</span></div>' +
-        guide.map(function (g) {
-          return '<div class="guide-row ' + (g.done ? 'done' : '') + '"><span class="guide-check">' + (g.done ? '✓' : '') + '</span><span>' + h(g.text) + '</span></div>';
-        }).join('') +
-        '<p class="guide-hint">完成这些事，山门就算真正转起来了。</p></div>' : '') +
 
       '<div class="panel disciples-snapshot"><div class="panel-head"><h3>山中弟子</h3><button class="text-btn" data-action="nav" data-tab="disciples">全部 ›</button></div>' +
       topDisciples.map(function (d) {
@@ -956,7 +983,18 @@
     return jobs;
   }
 
+  function mindChip(d) {
+    var m = E.mindState(d);
+    return '<span class="mind-chip mind-' + m.key + '" title="' + h(m.desc) + '"><span>道心</span><b>' + h(m.label) + '</b></span>';
+  }
+
+  function mindStateHtml(d) {
+    var m = E.mindState(d);
+    return '<div class="mind-state mind-' + m.key + '"><b>道心 · ' + h(m.label) + '</b><span>' + h(m.desc) + '</span></div>';
+  }
+
   function jobSelectHtml(d, extraClass) {
+    if (E.isMaster(UI.game, d)) return '<span class="job-quick job-quick-static ' + (extraClass || '') + '"><span>身份</span><b>掌门 · 坐镇山门</b></span>';
     if (d.missionId) return '<span class="job-quick job-quick-static ' + (extraClass || '') + '"><span>差事</span><b>在外历练</b></span>';
     var options = '<option value="">待命</option><option value="auto">自动安排</option>';
     jobChoices(d).forEach(function (b) {
@@ -977,7 +1015,7 @@
     return '<article class="disciple-card ' + (d.id === UI.game.playerId ? 'is-player' : '') + '">' +
       '<div class="dc-head">' + avatarSvg(d, 58) + '<div class="dc-title"><div><h3>' + h(d.name) + (d.id === UI.game.playerId ? ' <span class="badge badge-player">掌门</span>' : '') + '</h3><span class="dc-role">' + roleBadge(d) + '<span class="realm-text">' + h(stage(d)) + '</span></span></div><small>' + h(d.origin) + ' · ' + d.age + '岁</small></div></div>' +
       '<div class="dc-cult"><div class="dc-cult-head"><span>' + (isBottleneck ? '瓶颈' : '修为') + '</span><b>' + Math.floor(d.exp) + ' / ' + need + '</b></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') + '</div>' +
-      '<div class="dc-needs">' + needBar('心境', d.mood, d.mood < 30 ? 'bar-red' : 'bar-jade') + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + '</div>' +
+      '<div class="dc-needs">' + mindChip(d) + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + '</div>' +
       '<div class="dc-meta">' + jobSelectHtml(d, 'dc-job') + '<span class="power-chip">战力 ' + fmt(E.power(d, UI.game)) + '</span></div>' +
       '<div class="dc-traits">' + (d.traits || []).slice(0, 3).map(function (t) { return '<span class="mini-chip">' + h(D.TRAITS[t] ? D.TRAITS[t].name : t) + '</span>'; }).join('') + '</div>' +
       '<div class="dc-actions"><button class="btn btn-ghost btn-sm" data-action="open-disciple" data-id="' + d.id + '">详情</button>' +
@@ -992,6 +1030,7 @@
     UI.selectedDisciple = id;
     var pr = E.stageProgress(d);
     var isBottleneck = d.exp >= pr.need && d.realm < 9;
+    var master = E.isMaster(UI.game, d);
     var job = d.job ? E.buildingById(UI.game, d.job) : null;
     var pillHtml = Object.keys(D.PILLS).filter(function (p) { return (UI.game.pills[p] || 0) > 0; }).map(function (p) {
       var pill = D.PILLS[p];
@@ -1009,12 +1048,13 @@
       (isBottleneck ? '<div class="bottleneck-box">' + seal('破') + '<div><b>已至瓶颈</b><p>突破成功率 ' + Math.round(E.breakChance(d, UI.game) * 100) + '%</p></div></div><div class="detail-actions"><button class="btn btn-primary" data-action="breakthrough" data-id="' + d.id + '">尝试突破</button>' + ((UI.game.pills.pojing || 0) > 0 ? '<button class="btn btn-jade" data-action="breakthrough-pill" data-id="' + d.id + '">服破境丹突破</button>' : '') + '</div>' : '') +
       (promoteReq ? '<div class="detail-actions"><button class="btn btn-jade" data-action="promote" data-id="' + d.id + '">晋升内门 · 50 灵石</button></div>' : '') +
       '</div>' +
-      '<div class="detail-col"><h4>状态</h4><div class="need-list">' + needBar('心境', d.mood, d.mood < 30 ? 'bar-red' : 'bar-jade') + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + needBar('气血', d.health, d.health < 50 ? 'bar-red' : 'bar-jade') + needBar('筋骨', 100 - d.injury, d.injury > 30 ? 'bar-red' : 'bar-jade') + '</div>' +
+      '<div class="detail-col"><h4>状态</h4><div class="need-list">' + mindStateHtml(d) + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + needBar('气血', d.health, d.health < 50 ? 'bar-red' : 'bar-jade') + needBar('筋骨', 100 - d.injury, d.injury > 30 ? 'bar-red' : 'bar-jade') + '</div>' +
       '<div class="trait-row">' + (d.traits || []).map(function (t) { var tr = D.TRAITS[t]; return tr ? '<span class="trait-chip ' + (tr.rarity === '天' ? 'trait-heaven' : tr.rarity === '地' ? 'trait-earth' : '') + '" title="' + h(tr.desc) + '">' + h(tr.name) + '</span>' : ''; }).join('') + '</div>' +
       '</div></div>' +
       relationSection(d) +
-      '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (d.missionId ? '在外历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
-      (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job') +
+      '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (master ? '掌门坐镇' : d.missionId ? '在外历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
+      (master ? '<p class="job-hint">掌门为山门之主，不领差事，也不随队历练。掌门坐化后，需在弟子中另立掌门。</p>' :
+        d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job') +
         '<button class="btn btn-jade btn-sm" data-action="auto-assign" data-id="' + d.id + '">自动安排</button>' +
         (d.job ? '<button class="btn btn-ghost btn-sm" data-action="assign" data-id="' + d.id + '" data-building="">解除差事</button>' : '') + '</div>' +
         '<p class="job-hint">选好差事即刻生效；安排时山门时间会自动暂停。</p>') +
@@ -1171,6 +1211,13 @@
   function renderMarket() {
     var stock = UI.game.market.stock || [];
     var restock = Math.max(0, UI.game.market.restockDay - UI.game.day);
+    var sellItems = ['food', 'wood', 'stone', 'herbs'].map(function (id) {
+      var r = D.RESOURCES[id];
+      return { id: id, kind: 'resource', name: r.name, glyph: r.glyph, color: r.color, stock: UI.game.resources[id] || 0, price: E.sellPriceOf(id) };
+    }).concat(Object.keys(D.PILLS).filter(function (id) { return (UI.game.pills[id] || 0) > 0; }).map(function (id) {
+      var p = D.PILLS[id];
+      return { id: id, kind: 'pill', name: p.name, glyph: p.glyph, color: p.color || '#b08a4a', stock: UI.game.pills[id] || 0, price: E.sellPriceOf(id) };
+    }));
     document.getElementById('view').innerHTML = '<div class="view-page">' +
       '<div class="view-head"><div><p class="eyebrow">MOUNTAIN MARKET</p><h2>山下坊市</h2><p>胡商的车马每月来两次。灵石带够，话别说太满。</p></div><div class="view-head-actions"><span class="capacity-note">' + restock + ' 日后换货</span><span class="capacity-note">灵石 ' + fmt(UI.game.resources.stones) + '</span></div></div>' +
       '<div class="market-layout"><section class="panel"><div class="panel-head"><h3>今日货单</h3><span class="panel-mark">买</span></div><div class="market-grid">' +
@@ -1179,16 +1226,18 @@
         var name = meta ? meta.name : it.id;
         var glyph = meta ? meta.glyph : '货';
         var color = meta && meta.color ? meta.color : '#8f6a43';
+        var custom = it.gift ? '' : '<span class="qty-control"><input class="qty-input" type="number" inputmode="numeric" min="1" max="' + it.qty + '" value="1" data-buy-index="' + i + '" aria-label="购买' + h(name) + '数量"><button class="btn btn-ghost btn-xs" data-action="buy-custom" data-index="' + i + '">购</button></span>';
         return '<article class="market-item"><span class="market-glyph" style="--mc:' + color + '">' + glyph + '</span><div class="market-item-main"><b>' + h(name) + '</b><small>' + (it.gift ? '行商相赠' : it.kind === 'pill' ? '丹药' : '材料') + ' · 余 ' + it.qty + '</small></div><div class="market-price">' + (it.gift ? '赠' : it.price + ' 石') + '</div>' +
-          '<div class="market-actions"><button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="1">购 1</button>' + (it.qty >= 5 ? '<button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="5">购 5</button>' : '') + '</div></article>';
+          '<div class="market-actions"><button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="1">购 1</button>' + (it.qty >= 5 ? '<button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="5">购 5</button>' : '') + custom + '</div></article>';
       }).join('') : '<p class="muted">货架空了，等下一班商队。</p>') +
       '</div></section>' +
       '<aside class="panel"><div class="panel-head"><h3>卖出</h3><span class="panel-mark">卖</span></div>' +
-      ['food', 'wood', 'stone', 'herbs'].map(function (id) {
-        var r = D.RESOURCES[id];
-        return '<div class="sell-row"><span class="sell-glyph" style="--rc:' + r.color + '">' + r.glyph + '</span><div><b>' + h(r.name) + '</b><small>存 ' + fmt(UI.game.resources[id]) + ' · ' + E.sellPrices[id] + ' 石/份</small></div><button class="btn btn-ghost btn-xs" data-action="sell" data-id="' + id + '" data-qty="5" ' + ((UI.game.resources[id] || 0) < 5 ? 'disabled' : '') + '>卖 5</button></div>';
+      sellItems.map(function (it) {
+        return '<div class="sell-row"><span class="sell-glyph" style="--rc:' + it.color + '">' + it.glyph + '</span><div><b>' + h(it.name) + '</b><small>存 ' + fmt(it.stock) + ' · ' + it.price + ' 石/份' + (it.kind === 'pill' ? ' · 丹药' : '') + '</small></div>' +
+          '<div class="sell-actions"><span class="qty-control"><input class="qty-input" type="number" inputmode="numeric" min="1" max="' + Math.max(1, it.stock) + '" value="1" data-sell-id="' + it.id + '" aria-label="卖出' + h(it.name) + '数量"><button class="btn btn-ghost btn-xs" data-action="sell-custom" data-id="' + it.id + '" ' + (it.stock < 1 ? 'disabled' : '') + '>卖</button></span>' +
+          '<button class="btn btn-ghost btn-xs" data-action="sell" data-id="' + it.id + '" data-qty="5" ' + (it.stock < 5 ? 'disabled' : '') + '>卖 5</button></div></div>';
       }).join('') +
-      '<div class="market-note">' + seal('商') + '<p>声望越高，行商给的面子越大。参研天机推演还能再压一压价。</p></div></aside></div></div>';
+      '<div class="market-note">' + seal('商') + '<p>材料与丹药都可出手。声望越高，行商给的面子越大；参研天机推演还能再压一压价。</p></div></aside></div></div>';
   }
 
   /* ------------------------------------------------------------------ */
@@ -1224,8 +1273,30 @@
     if (UI.game) { renderHeader(); renderNav(); if (UI.tab !== 'sect' || !UI.game.pendingEvent) renderView(); }
   }
 
+  function openSuccessionModal() {
+    var candidates = E.successors(UI.game);
+    var content = '<div class="succession-modal"><div class="modal-head"><div><p class="eyebrow">THE SEAT IS EMPTY</p><h2>山门无主</h2><p class="detail-sub">掌门已坐化。请从弟子中另立掌门，山门才能继续运转。</p></div></div><div class="detail-body">' +
+      '<p class="detail-bio">掌门之位空悬，弟子们都在等一个名字。选定之后，新掌门将坐镇山门，不领差事，也不随队历练。</p>' +
+      (candidates.length ? '<div class="successor-list">' + candidates.map(function (d) {
+        return '<article class="successor-card"><div class="successor-head">' + avatarSvg(d, 54) + '<div><h3>' + h(d.name) + '</h3><small>' + roleBadge(d) + ' ' + h(stage(d)) + ' · ' + h(rootOf(d).name) + '</small></div></div>' +
+          '<div class="successor-facts"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>战力 <b>' + fmt(E.power(d, UI.game)) + '</b></span><span>道心 <b>' + h(E.mindState(d).label) + '</b></span></div>' +
+          '<p class="successor-bio">' + h(d.bio || '山中岁月长，来日方长。') + '</p>' +
+          '<button class="btn btn-primary btn-sm" data-action="choose-master" data-id="' + d.id + '">立为掌门</button></article>';
+      }).join('') + '</div>' : '<div class="empty-state small"><h3>无人可继</h3><p>山门已经走到尽头。</p></div>') +
+      '</div></div>';
+    openModal(content, { class: 'succession-modal-wrap', dismissible: false, key: 'succession' });
+  }
+
   function syncAutoModals() {
     if (!UI.game) return;
+    if (UI.game.ending) {
+      if (UI.modalKey !== 'ending') renderEnding();
+      return;
+    }
+    if (UI.game.pendingSuccession) {
+      if (UI.modalKey !== 'succession') openSuccessionModal();
+      return;
+    }
     if (UI.game.pendingEvent) {
       var key = 'event:' + UI.game.pendingEvent;
       if (UI.modalKey !== key) openEventModal(UI.game.pendingEvent);
@@ -1241,7 +1312,6 @@
       if (UI.modalKey !== repKey) openReportModal(UI.game.pendingReport);
       return;
     }
-    if (UI.game.ending && UI.modalKey !== 'ending') renderEnding();
   }
 
   function openEventModal(id) {
@@ -1284,7 +1354,7 @@
   }
 
   function openIntro() {
-    var content = '<div class="intro-modal"><div class="intro-art">' + landingArt() + '</div><div class="intro-body"><p class="eyebrow">THE FIRST DAY</p><h2>青崖山，山门初立</h2><p>' + h(D.STORY.start) + '</p><div class="intro-list"><div><b>先看差事</b><span>三名外门弟子已在灵田、药圃、膳堂当值。掌门在静室修炼。</span></div><div><b>再修房子</b><span>弟子居床位有限，灵田与药圃受季节影响。缺什么就去营造。</span></div><div><b>别忘了山下</b><span>历练能带回灵石与声望。声望越高，宗门品阶越高。</span></div></div><div class="modal-actions"><button class="btn btn-primary" data-action="close-modal">开始经营</button><button class="btn btn-ghost" data-action="help">详细玩法</button></div></div></div>';
+    var content = '<div class="intro-modal"><div class="intro-art"><img src="assets/qingya-panorama.jpg" alt="云海中的青崖山门"></div><div class="intro-body"><p class="eyebrow">THE FIRST DAY</p><h2>青崖山，山门初立</h2><p>' + h(D.STORY.start) + '</p><div class="intro-list"><div><b>先看差事</b><span>三名外门弟子已在灵田、药圃、膳堂当值。掌门在静室修炼。</span></div><div><b>再修房子</b><span>弟子居床位有限，灵田与药圃受季节影响。缺什么就去营造。</span></div><div><b>别忘了山下</b><span>历练能带回灵石与声望。声望越高，宗门品阶越高。</span></div></div><div class="modal-actions"><button class="btn btn-primary" data-action="close-modal">开始经营</button><button class="btn btn-ghost" data-action="help">详细玩法</button></div></div></div>';
     openModal(content, { class: 'intro-modal-wrap', dismissible: true, key: 'intro' });
   }
 
@@ -1305,7 +1375,8 @@
       '<div class="help-block"><h3>二、四时与吃穿</h3><p>灵田和药圃受季节影响，冬天近乎绝收。弟子每天消耗粮食；膳堂有人当值可减少消耗并提升心境。床位不足、饥饿和受伤都会拖慢修行。</p></div>' +
       '<div class="help-block"><h3>三、风水与修炼</h3><p>静室、聚灵阵和灵脉提升灵气；建筑相邻会产生风水加成。灵气与风水越高，弟子修炼越快，突破也越稳。内门弟子会优先进入有空位的静室。</p></div>' +
       '<div class="help-block"><h3>四、事务</h3><p>藏经阁产出悟道，用于参研。丹房把灵草炼成丹药。历练可派弟子下山，带回灵石、灵草、丹药与声望；受伤的弟子需要药庐休养。</p></div>' +
-      '<div class="help-block"><h3>五、目标</h3><p>提升声望，让宗门从荒山小门一路晋为仙道圣地；同时培养弟子渡劫飞升。掌门若遭遇不测，最强大的内门弟子会继任。</p></div>' +
+      '<div class="help-block"><h3>五、掌门与传承</h3><p>掌门是固定身份，坐镇山门，不领差事，也不随队历练。掌门若遭遇不测，山门会暂停，需要你从弟子中另立掌门后才能继续。选掌门时优先看资质、境界与道心。</p></div>' +
+      '<div class="help-block"><h3>六、目标</h3><p>提升声望，让宗门从荒山小门一路晋为仙道圣地；同时培养弟子渡劫飞升。</p></div>' +
       '<div class="settings-note"><b>提示</b><p>' + D.TIPS.map(function (t) { return '· ' + h(t); }).join('<br>') + '</p></div>' +
       '</div></div>';
     openModal(content, { class: 'help-modal-wrap', dismissible: true, key: 'help' });
@@ -1328,7 +1399,7 @@
     var def = E.def(b);
     var workers = b.workers.map(function (id) { return E.discipleById(UI.game, id); }).filter(Boolean);
     var eligible = E.aliveDisciples(UI.game).filter(function (d) {
-      if (d.missionId) return false;
+      if (d.missionId || E.isMaster(UI.game, d)) return false;
       var allowed = { meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'], arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'], infirmary: ['outer', 'inner'] }[b.type];
       return (!allowed || allowed.indexOf(d.role) >= 0);
     });
@@ -1498,7 +1569,7 @@
     (UI.game.missionOrders || []).forEach(function (o) {
       (o.discipleIds || []).forEach(function (id) { reserved[id] = true; });
     });
-    var list = E.aliveDisciples(UI.game).filter(function (d) { return !d.missionId && !reserved[d.id]; });
+    var list = E.aliveDisciples(UI.game).filter(function (d) { return !d.missionId && !reserved[d.id] && !E.isMaster(UI.game, d); });
     var selected = UI.missionPick.ids;
     var power = selected.reduce(function (s, id) { var d = E.discipleById(UI.game, id); return s + (d ? E.power(d, UI.game) : 0); }, 0);
     var content = '<div class="modal-head"><div><p class="eyebrow">EXPEDITION</p><h2>' + h(m.name) + '</h2><p class="detail-sub">危险 ' + (m.danger || 0) + ' · ' + m.days + ' 日 · 建议战力 ' + fmt(m.minPower || 0) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p class="detail-bio">' + h(m.desc) + ' ' + h(m.flavor) + '</p>' +
@@ -1578,6 +1649,23 @@
       case 'choose-origin': captureCreateFields(); UI.create.origin = value; renderCreation(); break;
       case 'choose-root': captureCreateFields(); UI.create.root = value; renderCreation(); break;
       case 'start-game': startGame(); break;
+      case 'open-journey': if (UI.game) openJourney(); break;
+      case 'journey-go':
+        if (UI.game) { closeModal(); UI.tab = tab || 'sect'; if (el.getAttribute('data-affairs')) UI.affairsTab = el.getAttribute('data-affairs'); renderAll(); }
+        break;
+      case 'claim-chapter': {
+        var chapterResult = E.claimChapter(UI.game, id);
+        var inJourney = UI.modalKey === 'journey';
+        if (chapterResult.ok) { saveNow(); renderAll(); if (inJourney) openJourney(); }
+        toast(chapterResult.msg, chapterResult.ok ? 'good' : 'warn');
+        break;
+      }
+      case 'fulfill-commission': {
+        var commissionResult = E.fulfillCommission(UI.game, id);
+        if (commissionResult.ok) { saveNow(); renderAll(); }
+        toast(commissionResult.msg, commissionResult.ok ? 'good' : 'warn');
+        break;
+      }
       case 'nav': if (UI.game) { UI.tab = tab || 'sect'; UI.buildType = null; closeModal(); renderAll(); } break;
       case 'task-go':
         if (id === '') { /* noop */ }
@@ -1659,6 +1747,12 @@
         var pr = E.promote(UI.game, id);
         if (!pr.ok) toast(pr.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); toast('晋升内门。', 'good'); }
         break;
+      case 'choose-master': {
+        var cm = E.chooseMaster(UI.game, id);
+        if (!cm.ok) toast(cm.msg, 'warn');
+        else { saveNow(); closeModal(); renderAll(); toast(cm.master.name + '接任掌门。', 'good'); }
+        break;
+      }
       case 'breakthrough':
         var br = E.tryBreakthrough(UI.game, id, false);
         if (!br.ok) toast(br.msg || '突破失败。', 'warn'); else toast(br.ascended ? '飞升！' : '破境成功。', 'good');
@@ -1745,10 +1839,26 @@
         var buy = E.marketBuy(UI.game, Number(el.getAttribute('data-index')), Number(el.getAttribute('data-qty') || 1));
         if (!buy.ok) toast(buy.msg, 'warn'); else { saveNow(); renderAll(); }
         break;
+      case 'buy-custom': {
+        var buyIndex = Number(el.getAttribute('data-index'));
+        var buyInput = document.querySelector('.qty-input[data-buy-index="' + buyIndex + '"]');
+        var buyQty = buyInput ? Number(buyInput.value) : 1;
+        var customBuy = E.marketBuy(UI.game, buyIndex, buyQty);
+        if (!customBuy.ok) toast(customBuy.msg, 'warn'); else { saveNow(); renderAll(); }
+        break;
+      }
       case 'sell':
         var sell = E.marketSell(UI.game, el.getAttribute('data-id'), Number(el.getAttribute('data-qty') || 5));
         if (!sell.ok) toast(sell.msg, 'warn'); else { saveNow(); renderAll(); }
         break;
+      case 'sell-custom': {
+        var sellId = el.getAttribute('data-id');
+        var sellInput = document.querySelector('.qty-input[data-sell-id="' + sellId + '"]');
+        var sellQty = sellInput ? Number(sellInput.value) : 1;
+        var customSell = E.marketSell(UI.game, sellId, sellQty);
+        if (!customSell.ok) toast(customSell.msg, 'warn'); else { saveNow(); renderAll(); }
+        break;
+      }
       case 'recruit': openRecruit(); break;
       case 'choose-recruit':
         var cr = E.chooseRecruit(UI.game, id);
