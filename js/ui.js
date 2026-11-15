@@ -78,6 +78,7 @@
   }
   function rootOf(d) { return D.ROOTS[d.root] || D.ROOTS.water; }
   function roleBadge(d) {
+    if (d.id === UI.game.playerId) return '<span class="badge badge-player">掌门</span>';
     return d.role === 'inner'
       ? '<span class="badge badge-inner">内门</span>'
       : '<span class="badge badge-outer">外门</span>';
@@ -637,7 +638,7 @@
       '</div>' +
       '<div class="landing-features">' +
       '<div><b>经营山门</b><span>建房、布局、风水与四时生产</span></div>' +
-      '<div><b>培养弟子</b><span>内门外门、需求心境、破境飞升</span></div>' +
+      '<div><b>培养弟子</b><span>内外门弟子、差事安排与破境飞升</span></div>' +
       '<div><b>应对江湖</b><span>历练、商队、兽潮与仙门大比</span></div>' +
       '</div>' +
       '<p class="landing-foot">原创网页作品 · 适配手机 · 存档保存在本机 · 无需安装</p>' +
@@ -665,7 +666,7 @@
       '<div class="form-row"><label>掌门名</label><input id="player-name" maxlength="8" value="' + h(UI.create.playerName) + '"></div>' +
       '<div class="form-block"><div class="form-label"><span>出身</span><small>影响开局资源与一点天赋</small></div><div class="choice-grid">' + origins + '</div></div>' +
       '<div class="form-block"><div class="form-label"><span>灵根</span><small>影响修行速度与擅长之事</small></div><div class="root-grid">' + roots + '</div></div>' +
-      '<div class="creation-tip">' + seal('记') + '<p>外门弟子负责劳作，内门弟子专注修炼。开局有三名外门弟子，分别照看灵田、药圃与膳堂；掌门已在静室闭关。先让山门转起来，再谈长生。</p></div>' +
+      '<div class="creation-tip">' + seal('记') + '<p>外门弟子负责劳作，内门弟子专注修炼。开局有三名外门弟子，分别照看灵田、药圃与膳堂；掌门坐镇山门，也可以与弟子一同领差事。先让山门转起来，再谈长生。</p></div>' +
       '<div class="creation-actions"><button class="btn btn-primary btn-lg" data-action="start-game">立下山门</button><button class="btn btn-ghost" data-action="help">先看玩法</button></div>' +
       '</div></div>';
   }
@@ -983,19 +984,8 @@
     return jobs;
   }
 
-  function mindChip(d) {
-    var m = E.mindState(d);
-    return '<span class="mind-chip mind-' + m.key + '" title="' + h(m.desc) + '"><span>道心</span><b>' + h(m.label) + '</b></span>';
-  }
-
-  function mindStateHtml(d) {
-    var m = E.mindState(d);
-    return '<div class="mind-state mind-' + m.key + '"><b>道心 · ' + h(m.label) + '</b><span>' + h(m.desc) + '</span></div>';
-  }
-
-  function jobSelectHtml(d, extraClass) {
-    if (E.isMaster(UI.game, d)) return '<span class="job-quick job-quick-static ' + (extraClass || '') + '"><span>身份</span><b>掌门 · 坐镇山门</b></span>';
-    if (d.missionId) return '<span class="job-quick job-quick-static ' + (extraClass || '') + '"><span>差事</span><b>在外历练</b></span>';
+  function jobSelectHtml(d, extraClass, label) {
+    if (d.missionId) return '<span class="job-quick job-quick-static ' + (extraClass || '') + '"><span>' + (label || '差事') + '</span><b>在外历练</b></span>';
     var options = '<option value="">待命</option><option value="auto">自动安排</option>';
     jobChoices(d).forEach(function (b) {
       var def = E.def(b);
@@ -1003,7 +993,7 @@
       options += '<option value="' + b.id + '" ' + (d.job === b.id ? 'selected' : '') + (full ? ' disabled' : '') + '>' +
         h(def.name) + ' · ' + b.workers.length + '/' + E.slotsOf(b) + '</option>';
     });
-    return '<label class="job-quick ' + (extraClass || '') + '"><span>差事</span><select class="job-select" data-action="assign-select" data-id="' + d.id + '" aria-label="为' + h(d.name) + '安排差事">' + options + '</select></label>';
+    return '<label class="job-quick ' + (extraClass || '') + '"><span>' + (label || '差事') + '</span><select class="job-select" data-action="assign-select" data-id="' + d.id + '" aria-label="为' + h(d.name) + '安排差事">' + options + '</select></label>';
   }
 
   function discipleCard(d) {
@@ -1013,9 +1003,8 @@
     var job = d.job ? E.buildingById(UI.game, d.job) : null;
     var jobName = d.missionId ? '在外历练' : job ? E.def(job).name : '闲居';
     return '<article class="disciple-card ' + (d.id === UI.game.playerId ? 'is-player' : '') + '">' +
-      '<div class="dc-head">' + avatarSvg(d, 58) + '<div class="dc-title"><div><h3>' + h(d.name) + (d.id === UI.game.playerId ? ' <span class="badge badge-player">掌门</span>' : '') + '</h3><span class="dc-role">' + roleBadge(d) + '<span class="realm-text">' + h(stage(d)) + '</span></span></div><small>' + h(d.origin) + ' · ' + d.age + '岁</small></div></div>' +
+      '<div class="dc-head">' + avatarSvg(d, 58) + '<div class="dc-title"><div><h3>' + h(d.name) + '</h3><span class="dc-role">' + roleBadge(d) + '<span class="realm-text">' + h(stage(d)) + '</span></span></div><small>' + h(d.origin) + ' · ' + d.age + '岁</small></div></div>' +
       '<div class="dc-cult"><div class="dc-cult-head"><span>' + (isBottleneck ? '瓶颈' : '修为') + '</span><b>' + Math.floor(d.exp) + ' / ' + need + '</b></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') + '</div>' +
-      '<div class="dc-needs">' + mindChip(d) + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + '</div>' +
       '<div class="dc-meta">' + jobSelectHtml(d, 'dc-job') + '<span class="power-chip">战力 ' + fmt(E.power(d, UI.game)) + '</span></div>' +
       '<div class="dc-traits">' + (d.traits || []).slice(0, 3).map(function (t) { return '<span class="mini-chip">' + h(D.TRAITS[t] ? D.TRAITS[t].name : t) + '</span>'; }).join('') + '</div>' +
       '<div class="dc-actions"><button class="btn btn-ghost btn-sm" data-action="open-disciple" data-id="' + d.id + '">详情</button>' +
@@ -1030,14 +1019,13 @@
     UI.selectedDisciple = id;
     var pr = E.stageProgress(d);
     var isBottleneck = d.exp >= pr.need && d.realm < 9;
-    var master = E.isMaster(UI.game, d);
     var job = d.job ? E.buildingById(UI.game, d.job) : null;
     var pillHtml = Object.keys(D.PILLS).filter(function (p) { return (UI.game.pills[p] || 0) > 0; }).map(function (p) {
       var pill = D.PILLS[p];
       return '<button class="pill-use" data-action="use-pill" data-id="' + d.id + '" data-pill="' + p + '">' + seal(pill.glyph) + '<span><b>' + h(pill.name) + '</b><small>' + h(pill.desc) + '</small></span><em>×' + UI.game.pills[p] + '</em></button>';
     }).join('');
     var promoteReq = d.role === 'outer' && d.realm === 0 && d.layer >= 2 && E.aptitude(d) >= 2;
-    var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + (d.id === UI.game.playerId ? 'SECT MASTER' : d.role === 'inner' ? 'INNER DISCIPLE' : 'OUTER DISCIPLE') + '</p><h2>' + h(d.name) + (d.id === UI.game.playerId ? ' · 掌门' : '') + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
+    var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + (d.id === UI.game.playerId ? 'SECT MASTER' : d.role === 'inner' ? 'INNER DISCIPLE' : 'OUTER DISCIPLE') + '</p><h2>' + h(d.name) + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
       '<div class="detail-body">' +
       '<div class="detail-bio">' + h(d.bio || '山中岁月长，来日方长。') + '</div>' +
       (UI.settings.autoPause ? '<div class="pause-note">时间已暂停 · 可安心安排差事</div>' : '') +
@@ -1048,13 +1036,12 @@
       (isBottleneck ? '<div class="bottleneck-box">' + seal('破') + '<div><b>已至瓶颈</b><p>突破成功率 ' + Math.round(E.breakChance(d, UI.game) * 100) + '%</p></div></div><div class="detail-actions"><button class="btn btn-primary" data-action="breakthrough" data-id="' + d.id + '">尝试突破</button>' + ((UI.game.pills.pojing || 0) > 0 ? '<button class="btn btn-jade" data-action="breakthrough-pill" data-id="' + d.id + '">服破境丹突破</button>' : '') + '</div>' : '') +
       (promoteReq ? '<div class="detail-actions"><button class="btn btn-jade" data-action="promote" data-id="' + d.id + '">晋升内门 · 50 灵石</button></div>' : '') +
       '</div>' +
-      '<div class="detail-col"><h4>状态</h4><div class="need-list">' + mindStateHtml(d) + needBar('饱食', d.hunger, 'bar-gold') + needBar('精力', d.energy, 'bar-blue') + needBar('气血', d.health, d.health < 50 ? 'bar-red' : 'bar-jade') + needBar('筋骨', 100 - d.injury, d.injury > 30 ? 'bar-red' : 'bar-jade') + '</div>' +
+      '<div class="detail-col"><h4>状态</h4><div class="need-list">' + needBar('气血', d.health, d.health < 50 ? 'bar-red' : 'bar-jade') + needBar('筋骨', 100 - d.injury, d.injury > 30 ? 'bar-red' : 'bar-jade') + '</div>' +
       '<div class="trait-row">' + (d.traits || []).map(function (t) { var tr = D.TRAITS[t]; return tr ? '<span class="trait-chip ' + (tr.rarity === '天' ? 'trait-heaven' : tr.rarity === '地' ? 'trait-earth' : '') + '" title="' + h(tr.desc) + '">' + h(tr.name) + '</span>' : ''; }).join('') + '</div>' +
       '</div></div>' +
       relationSection(d) +
-      '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (master ? '掌门坐镇' : d.missionId ? '在外历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
-      (master ? '<p class="job-hint">掌门为山门之主，不领差事，也不随队历练。掌门坐化后，需在弟子中另立掌门。</p>' :
-        d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job') +
+      '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (d.missionId ? '在外历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
+      (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job', '安排') +
         '<button class="btn btn-jade btn-sm" data-action="auto-assign" data-id="' + d.id + '">自动安排</button>' +
         (d.job ? '<button class="btn btn-ghost btn-sm" data-action="assign" data-id="' + d.id + '" data-building="">解除差事</button>' : '') + '</div>' +
         '<p class="job-hint">选好差事即刻生效；安排时山门时间会自动暂停。</p>') +
@@ -1276,10 +1263,10 @@
   function openSuccessionModal() {
     var candidates = E.successors(UI.game);
     var content = '<div class="succession-modal"><div class="modal-head"><div><p class="eyebrow">THE SEAT IS EMPTY</p><h2>山门无主</h2><p class="detail-sub">掌门已坐化。请从弟子中另立掌门，山门才能继续运转。</p></div></div><div class="detail-body">' +
-      '<p class="detail-bio">掌门之位空悬，弟子们都在等一个名字。选定之后，新掌门将坐镇山门，不领差事，也不随队历练。</p>' +
+      '<p class="detail-bio">掌门之位空悬，弟子们都在等一个名字。选定之后，新掌门将接掌山门，与同门一同修行做事。</p>' +
       (candidates.length ? '<div class="successor-list">' + candidates.map(function (d) {
         return '<article class="successor-card"><div class="successor-head">' + avatarSvg(d, 54) + '<div><h3>' + h(d.name) + '</h3><small>' + roleBadge(d) + ' ' + h(stage(d)) + ' · ' + h(rootOf(d).name) + '</small></div></div>' +
-          '<div class="successor-facts"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>战力 <b>' + fmt(E.power(d, UI.game)) + '</b></span><span>道心 <b>' + h(E.mindState(d).label) + '</b></span></div>' +
+          '<div class="successor-facts"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>战力 <b>' + fmt(E.power(d, UI.game)) + '</b></span></div>' +
           '<p class="successor-bio">' + h(d.bio || '山中岁月长，来日方长。') + '</p>' +
           '<button class="btn btn-primary btn-sm" data-action="choose-master" data-id="' + d.id + '">立为掌门</button></article>';
       }).join('') + '</div>' : '<div class="empty-state small"><h3>无人可继</h3><p>山门已经走到尽头。</p></div>') +
@@ -1372,10 +1359,10 @@
   function openHelp() {
     var content = '<div class="help-modal"><div class="modal-head"><div><p class="eyebrow">HOW TO PLAY</p><h2>宗门入门</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="help-body">' +
       '<div class="help-block"><h3>一、外门与内门</h3><p>外门弟子负责灵田、药圃、膳堂等劳作；内门弟子专注修炼，也可守丹房、藏经阁与演武场。外门弟子修到炼气三层，可花 50 灵石晋升内门。</p></div>' +
-      '<div class="help-block"><h3>二、四时与吃穿</h3><p>灵田和药圃受季节影响，冬天近乎绝收。弟子每天消耗粮食；膳堂有人当值可减少消耗并提升心境。床位不足、饥饿和受伤都会拖慢修行。</p></div>' +
+      '<div class="help-block"><h3>二、四时与吃穿</h3><p>灵田和药圃受季节影响，冬天近乎绝收。弟子每天消耗粮食；膳堂有人当值可减少消耗。床位不足、饥饿和受伤都会拖慢修行。</p></div>' +
       '<div class="help-block"><h3>三、风水与修炼</h3><p>静室、聚灵阵和灵脉提升灵气；建筑相邻会产生风水加成。灵气与风水越高，弟子修炼越快，突破也越稳。内门弟子会优先进入有空位的静室。</p></div>' +
       '<div class="help-block"><h3>四、事务</h3><p>藏经阁产出悟道，用于参研。丹房把灵草炼成丹药。历练可派弟子下山，带回灵石、灵草、丹药与声望；受伤的弟子需要药庐休养。</p></div>' +
-      '<div class="help-block"><h3>五、掌门与传承</h3><p>掌门是固定身份，坐镇山门，不领差事，也不随队历练。掌门若遭遇不测，山门会暂停，需要你从弟子中另立掌门后才能继续。选掌门时优先看资质、境界与道心。</p></div>' +
+      '<div class="help-block"><h3>五、掌门与传承</h3><p>掌门是固定身份，与普通弟子一样可以领差事、随队历练。掌门若遭遇不测，山门会暂停，需要你从弟子中另立掌门后才能继续。选掌门时优先看资质与境界。</p></div>' +
       '<div class="help-block"><h3>六、目标</h3><p>提升声望，让宗门从荒山小门一路晋为仙道圣地；同时培养弟子渡劫飞升。</p></div>' +
       '<div class="settings-note"><b>提示</b><p>' + D.TIPS.map(function (t) { return '· ' + h(t); }).join('<br>') + '</p></div>' +
       '</div></div>';
@@ -1399,7 +1386,7 @@
     var def = E.def(b);
     var workers = b.workers.map(function (id) { return E.discipleById(UI.game, id); }).filter(Boolean);
     var eligible = E.aliveDisciples(UI.game).filter(function (d) {
-      if (d.missionId || E.isMaster(UI.game, d)) return false;
+      if (d.missionId) return false;
       var allowed = { meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'], arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'], infirmary: ['outer', 'inner'] }[b.type];
       return (!allowed || allowed.indexOf(d.role) >= 0);
     });
@@ -1569,7 +1556,7 @@
     (UI.game.missionOrders || []).forEach(function (o) {
       (o.discipleIds || []).forEach(function (id) { reserved[id] = true; });
     });
-    var list = E.aliveDisciples(UI.game).filter(function (d) { return !d.missionId && !reserved[d.id] && !E.isMaster(UI.game, d); });
+    var list = E.aliveDisciples(UI.game).filter(function (d) { return !d.missionId && !reserved[d.id]; });
     var selected = UI.missionPick.ids;
     var power = selected.reduce(function (s, id) { var d = E.discipleById(UI.game, id); return s + (d ? E.power(d, UI.game) : 0); }, 0);
     var content = '<div class="modal-head"><div><p class="eyebrow">EXPEDITION</p><h2>' + h(m.name) + '</h2><p class="detail-sub">危险 ' + (m.danger || 0) + ' · ' + m.days + ' 日 · 建议战力 ' + fmt(m.minPower || 0) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p class="detail-bio">' + h(m.desc) + ' ' + h(m.flavor) + '</p>' +

@@ -122,9 +122,13 @@ test('外门弟子不能进静室，内门弟子不能做粗活', function () {
   var outer = E.outerDisciples(s)[0];
   var med = s.buildings.find(function (b) { return b.type === 'meditation'; });
   assert.strictEqual(E.assign(s, outer.id, med.id).ok, false);
-  var player = E.player(s);
+  outer.realm = 0;
+  outer.layer = 2;
+  outer.aptitude = Math.max(3, outer.aptitude);
+  s.resources.stones = 200;
+  assert.strictEqual(E.promote(s, outer.id).ok, true);
   var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
-  assert.strictEqual(E.assign(s, player.id, farm.id).ok, false);
+  assert.strictEqual(E.assign(s, outer.id, farm.id).ok, false);
 });
 
 test('外门弟子达到炼气三层可晋升内门', function () {
@@ -503,14 +507,17 @@ test('坊市可以卖丹药，并按自定义数量结算', function () {
   assert.strictEqual(item.qty, before - 3);
 });
 
-test('掌门不领差事，也不能随队历练', function () {
+test('掌门可以领差事，也可以随队历练', function () {
   var s = newState(19);
   var master = E.player(s);
-  var room = s.buildings.find(function (b) { return b.type === 'meditation'; });
-  assert.strictEqual(E.assign(s, master.id, room.id).ok, false);
-  assert.deepStrictEqual(E.eligibleJobs(s, master), []);
-  assert.strictEqual(E.autoAssign(s, master.id).ok, false);
-  assert.strictEqual(E.startMission(s, 'backhill', [master.id]).ok, false);
+  var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
+  assert.ok(E.assign(s, master.id, farm.id).ok);
+  assert.strictEqual(master.job, farm.id);
+  assert.ok(E.eligibleJobs(s, master).length > 0);
+  assert.ok(E.autoAssign(s, master.id).ok);
+  var mission = E.startMission(s, 'backhill', [master.id]);
+  assert.ok(mission.ok);
+  assert.ok(master.missionId);
 });
 
 test('掌门阵亡后需要手动另立，不会自动继任', function () {
@@ -529,12 +536,14 @@ test('掌门阵亡后需要手动另立，不会自动继任', function () {
   assert.strictEqual(heir.job, null);
 });
 
-test('道心状态按心境分段显示', function () {
-  assert.strictEqual(E.mindState({ mood: 90 }).label, '澄明');
-  assert.strictEqual(E.mindState({ mood: 70 }).label, '平和');
-  assert.strictEqual(E.mindState({ mood: 50 }).label, '浮动');
-  assert.strictEqual(E.mindState({ mood: 30 }).label, '郁结');
-  assert.strictEqual(E.mindState({ mood: 10 }).label, '失守');
+test('掌门领的差事读档后不会丢', function () {
+  var s = newState(21);
+  var master = E.player(s);
+  var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
+  assert.ok(E.assign(s, master.id, farm.id).ok);
+  E.normalizeState(s);
+  assert.strictEqual(master.job, farm.id);
+  assert.ok(farm.workers.indexOf(master.id) >= 0);
 });
 
 console.log('\n' + passed + ' 项测试通过。\n');

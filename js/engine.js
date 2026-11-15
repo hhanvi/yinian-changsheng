@@ -99,6 +99,7 @@
   };
 
   function canWorkAt(b, d) {
+    if (d.title === '掌门') return true;
     var roles = JOB_ROLES[b.type];
     return !roles || roles.indexOf(d.role) >= 0;
   }
@@ -136,14 +137,6 @@
   E.player = function (state) { return E.discipleById(state, state.playerId); };
   E.isMaster = function (state, d) {
     return !!(state && d && state.playerId && d.id === state.playerId && !d.dead);
-  };
-  E.mindState = function (d) {
-    var mood = d ? Number(d.mood) || 0 : 0;
-    if (mood >= 80) return { key: 'clear', label: '澄明', tone: 'good', desc: '心念澄澈，修行顺遂。' };
-    if (mood >= 60) return { key: 'calm', label: '平和', tone: 'calm', desc: '心境平和，进退有度。' };
-    if (mood >= 40) return { key: 'wander', label: '浮动', tone: 'warn', desc: '心有旁骛，修行稍缓。' };
-    if (mood >= 20) return { key: 'knot', label: '郁结', tone: 'bad', desc: '郁结难解，易生心魔。' };
-    return { key: 'lost', label: '失守', tone: 'bad', desc: '道心不稳，恐伤根基。' };
   };
   E.successors = function (state) {
     return E.aliveDisciples(state).filter(function (d) {
@@ -1005,7 +998,7 @@
 
     // 自动安排空闲弟子：按灵根、性情与空缺择最合适的差事
     E.aliveDisciples(state).forEach(function (d) {
-      if (E.isMaster(state, d) || d.missionId || d.job || d.jobMode === 'manual') return;
+      if (d.missionId || d.job || d.jobMode === 'manual') return;
       E.autoAssign(state, d.id);
     });
 
@@ -1192,7 +1185,6 @@
     var auto = !!opts.auto;
     var d = E.discipleById(state, discipleId);
     if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
-    if (E.isMaster(state, d)) return { ok: false, msg: '掌门坐镇山门，不领差事。' };
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
     var b = null, def = null;
     if (buildingId) {
@@ -1226,7 +1218,7 @@
   };
 
   E.eligibleJobs = function (state, d) {
-    if (!d || d.dead || E.isMaster(state, d)) return [];
+    if (!d || d.dead) return [];
     return state.buildings.filter(function (b) {
       var def = E.def(b);
       if (!def || !def.slots || b.construction > 0) return false;
@@ -1237,7 +1229,7 @@
 
   /* 给弟子挑一份最合适的差事：内门优先静室，外门按灵根与空缺补位。 */
   E.recommendedJob = function (state, d) {
-    if (!d || d.dead || E.isMaster(state, d)) return null;
+    if (!d || d.dead) return null;
     var candidates = state.buildings.filter(function (b) {
       var def = E.def(b);
       if (!def || !def.slots || b.construction > 0) return false;
@@ -1272,7 +1264,6 @@
   E.autoAssign = function (state, discipleId) {
     var d = E.discipleById(state, discipleId);
     if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
-    if (E.isMaster(state, d)) return { ok: false, msg: '掌门坐镇山门，不领差事。' };
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
     var b = E.recommendedJob(state, d);
     if (!b) return { ok: false, msg: '山中暂无合适差事。' };
@@ -1290,7 +1281,7 @@
     var room = E.slotsOf(b) - b.workers.length;
     if (room <= 0) return { ok: false, msg: '此处已满员。' };
     var pool = E.aliveDisciples(state).filter(function (d) {
-      return !E.isMaster(state, d) && !d.missionId && !d.job && d.jobMode !== 'manual' && d.id !== b.workers[0] && canWorkAt(b, d);
+      return !d.missionId && !d.job && d.jobMode !== 'manual' && d.id !== b.workers[0] && canWorkAt(b, d);
     }).sort(function (a, c) {
       var sa = E.aptitude(a) + (a.traits || []).length * 0.2;
       var sc = E.aptitude(c) + (c.traits || []).length * 0.2;
@@ -1452,7 +1443,6 @@
     for (var i = 0; i < discipleIds.length; i++) {
       var d = E.discipleById(state, discipleIds[i]);
       if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
-      if (E.isMaster(state, d)) return { ok: false, msg: '掌门需坐镇山门，不可远行。' };
       if (d.missionId) return { ok: false, msg: '该弟子已经在外。' };
       if (d.health < 30) return { ok: false, msg: d.name + '伤势未愈，不宜远行。' };
       if (!m.allowOuter && d.role !== 'inner') return { ok: false, msg: '此地凶险，外门弟子去不得。' };
@@ -2048,13 +2038,7 @@
       if (currentMaster && !currentMaster.dead) {
         currentMaster.role = 'inner';
         currentMaster.title = '掌门';
-        currentMaster.job = null;
-        currentMaster.jobMode = 'manual';
-        currentMaster.preferredJob = null;
         state.pendingSuccession = false;
-        state.buildings.forEach(function (b) {
-          b.workers = b.workers.filter(function (id) { return id !== currentMaster.id; });
-        });
       }
     }
     return state;

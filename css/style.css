@@ -913,16 +913,6 @@ ul { margin: 0; padding-left: 1.1em; }
 .dc-cult { margin-top: 12px; }
 .dc-cult-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; margin-bottom: 4px; }
 .dc-cult-head b { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-weight: 500; }
-.dc-needs { display: flex; flex-direction: column; gap: 5px; margin-top: 11px; }
-.mind-chip { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); color: var(--muted); font-size: 9px; }
-.mind-chip b { font-family: var(--serif); font-size: 10px; font-weight: 700; }
-.mind-chip.mind-clear, .mind-state.mind-clear { color: var(--jade); border-color: color-mix(in srgb, var(--jade) 34%, var(--line)); }
-.mind-chip.mind-calm, .mind-state.mind-calm { color: var(--ink-soft); }
-.mind-chip.mind-wander, .mind-state.mind-wander { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 34%, var(--line)); }
-.mind-chip.mind-knot, .mind-state.mind-knot, .mind-chip.mind-lost, .mind-state.mind-lost { color: var(--cinnabar); border-color: color-mix(in srgb, var(--cinnabar) 34%, var(--line)); }
-.mind-state { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-left: 2px solid currentColor; background: color-mix(in srgb, currentColor 6%, transparent); }
-.mind-state b { font-family: var(--serif); font-size: 11px; }
-.mind-state span { color: var(--muted); font-size: 9px; line-height: 1.5; }
 .need-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) 24px; align-items: center; gap: 7px; color: var(--muted); font-size: 9px; }
 .need-row b { font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
 .need-row .bar { height: 5px; }
