@@ -74,13 +74,15 @@
     return { x: ORIGIN_X + (x - y) * TILE_W / 2, y: ORIGIN_Y + (x + y) * TILE_H / 2 };
   }
   function rootOf(d) { return D.ROOTS[d.root] || D.ROOTS.water; }
+  function rankBadge(rank) {
+    if (!rank) return '';
+    var cls = rank.id === 'menial' ? 'badge-menial' : rank.id === 'core' ? 'badge-core' : rank.id === 'elder' ? 'badge-elder' : rank.id === 'inner' ? 'badge-inner' : rank.id === 'master' ? 'badge-player' : 'badge-outer';
+    return '<span class="badge ' + cls + '">' + h(rank.name.replace('弟子', '')) + '</span>';
+  }
   function roleBadge(d) {
     var ascended = E.isAscended(d) ? '<span class="badge badge-ascended">飞升</span>' : '';
     if (d.id === UI.game.playerId) return '<span class="badge badge-player">掌门</span>' + ascended;
-    if (E.isAscended(d)) return ascended;
-    return d.role === 'inner'
-      ? '<span class="badge badge-inner">内门</span>'
-      : '<span class="badge badge-outer">外门</span>';
+    return rankBadge(E.rankOf(d)) + ascended;
   }
   function stage(d) { return E.stageName(d); }
   function date(state) { return E.getDate(state); }
@@ -211,7 +213,9 @@
     shrine: { roof: '#70453c', roof2: '#8a5849', wall: '#e6d4b5', wall2: '#c9b18d', trim: '#a33b2a', sign: '祠' },
     guest: { roof: '#596a62', roof2: '#6f8177', wall: '#e8dbc2', wall2: '#d1bf9e', trim: '#a9854e', sign: '客' },
     infirmary: { roof: '#5d6650', roof2: '#727a61', wall: '#e9ddc5', wall2: '#d3c1a1', trim: '#7b8f55', sign: '庐' },
-    storage: { roof: '#655c4e', roof2: '#7c705f', wall: '#dfd0b5', wall2: '#c6b394', trim: '#8b6a45', sign: '库' }
+    storage: { roof: '#655c4e', roof2: '#7c705f', wall: '#dfd0b5', wall2: '#c6b394', trim: '#8b6a45', sign: '库' },
+    lumberyard: { roof: '#6d5a40', roof2: '#826b4c', wall: '#d9c7a4', wall2: '#c3ad89', trim: '#8f6a43', sign: '木' },
+    quarry: { roof: '#6f6a5c', roof2: '#847d6c', wall: '#d8d0bd', wall2: '#c2b8a2', trim: '#7d7665', sign: '石' }
   };
 
   function tilePoly(sx, sy, inset) {
@@ -394,6 +398,22 @@
         '<path d="M-18,-3 q3 -8 6 0 M-8,0 q3 -8 6 0 M3,-1 q3 -8 6 0 M13,0 q3 -8 6 0 M-12,5 q3 -7 6 0 M0,7 q3 -7 6 0 M12,5 q3 -7 6 0" stroke="#7d9a5f" stroke-width="1.6" fill="none"/>' +
         '<circle cx="-13" cy="-6" r="2" fill="#d6df92" opacity=".8"/><circle cx="7" cy="-4" r="2" fill="#d6df92" opacity=".8"/>' +
         '<path d="M-22,-10 L22,-10 M-22,-10 L-26,-18 M22,-10 L26,-18" stroke="#8f6a43" stroke-width="1.4" fill="none"/>';
+    } else if (b.type === 'lumberyard') {
+      inner = '<ellipse cx="0" cy="8" rx="29" ry="11" fill="rgba(35,30,20,.14)"/>' +
+        '<polygon points="0,-14 29,-1 0,13 -29,-1" fill="#a79a78"/>' +
+        '<g transform="translate(-7,2) rotate(-7)"><rect x="-17" y="-4" width="31" height="7" rx="3.5" fill="#8b6542"/><circle cx="14" cy="-.5" r="3.5" fill="#c9a978"/><circle cx="14" cy="-.5" r="1.5" fill="#a8865d"/></g>' +
+        '<g transform="translate(2,7) rotate(5)"><rect x="-14" y="-3" width="28" height="6" rx="3" fill="#76553a"/><circle cx="14" cy="0" r="3" fill="#b99a6c"/></g>' +
+        '<path d="M-19,-9 L-7,-18 L9,-16 L17,-8" fill="none" stroke="#8f6a43" stroke-width="2"/>' +
+        '<path d="M-17,-8 L15,-6" stroke="#c7b691" stroke-width="1.2"/><path d="M-13,-7 L-13,-3 M-9,-7 L-9,-3 M-5,-7 L-5,-3 M-1,-7 L-1,-3 M3,-7 L3,-3 M7,-6 L7,-2" stroke="#8b6a45" stroke-width="1"/>' +
+        '<g transform="translate(18,-8) scale(.46)">' + houseSvg({ roof: '#6d5a40', roof2: '#826b4c', wall: '#d9c7a4', wall2: '#c3ad89', trim: '#8f6a43', sign: '木' }, { half: 13, peak: 22, wallTop: -13 }) + '</g>';
+    } else if (b.type === 'quarry') {
+      inner = '<ellipse cx="0" cy="8" rx="29" ry="11" fill="rgba(35,30,20,.14)"/>' +
+        '<polygon points="0,-14 29,-1 0,13 -29,-1" fill="#9b9a8c"/>' +
+        '<path d="M-18,2 L-9,-8 L0,-5 L5,-12 L17,-4 L20,4 L4,9 Z" fill="#8d8b7d"/>' +
+        '<path d="M-9,-8 L0,-5 L5,-12 L17,-4 L20,4 L4,9 Z" fill="#b0ad9b"/>' +
+        '<path d="M-14,2 L-6,-4 M2,-3 L10,-8 M-2,5 L8,2" stroke="#cbc7b5" stroke-width="1.2" opacity=".7"/>' +
+        '<path d="M-4,-9 L4,-17" stroke="#7a654a" stroke-width="2"/><path d="M-1,-18 L9,-14 L6,-10 L-3,-14 Z" fill="#8d877b"/>' +
+        '<g transform="translate(18,-8) scale(.46)">' + houseSvg({ roof: '#6f6a5c', roof2: '#847d6c', wall: '#d8d0bd', wall2: '#c2b8a2', trim: '#7d7665', sign: '石' }, { half: 13, peak: 22, wallTop: -13 }) + '</g>';
     } else if (b.type === 'array') {
       inner = '<ellipse cx="0" cy="1" rx="28" ry="15" fill="rgba(73,128,119,.18)"/>' +
         '<ellipse cx="0" cy="1" rx="22" ry="11" fill="none" stroke="#6fa99b" stroke-width="1.4" stroke-dasharray="4 3" class="array-ring"/>' +
@@ -637,7 +657,7 @@
       '</div>' +
       '<div class="landing-features">' +
       '<div><b>经营山门</b><span>建房、布局、风水与四时生产</span></div>' +
-      '<div><b>培养弟子</b><span>内外门弟子、差事安排与破境飞升</span></div>' +
+      '<div><b>培养弟子</b><span>杂役至长老的晋升、差事安排与破境飞升</span></div>' +
       '<div><b>应对江湖</b><span>历练、商队、兽潮与仙门大比</span></div>' +
       '</div>' +
       '<p class="landing-foot">原创网页作品 · 适配手机 · 存档保存在本机 · 无需安装</p>' +
@@ -665,7 +685,7 @@
       '<div class="form-row"><label>掌门名</label><input id="player-name" maxlength="8" value="' + h(UI.create.playerName) + '"></div>' +
       '<div class="form-block"><div class="form-label"><span>出身</span><small>影响开局资源与一点天赋</small></div><div class="choice-grid">' + origins + '</div></div>' +
       '<div class="form-block"><div class="form-label"><span>灵根</span><small>影响修行速度与擅长之事</small></div><div class="root-grid">' + roots + '</div></div>' +
-      '<div class="creation-tip">' + seal('记') + '<p>外门弟子负责劳作，内门弟子专注修炼。开局有三名外门弟子，分别照看灵田、药圃与膳堂；掌门坐镇山门，也可以与弟子一同领差事。先让山门转起来，再谈长生。</p></div>' +
+      '<div class="creation-tip">' + seal('记') + '<p>门中弟子从杂役做起，依次晋升外门、内门、真传，真传中的佼佼者可被立为长老。开局有三名外门弟子照看灵田、药圃与膳堂；掌门坐镇山门，也可以与弟子一同领差事。</p></div>' +
       '<div class="creation-actions"><button class="btn btn-primary btn-lg" data-action="start-game">立下山门</button><button class="btn btn-ghost" data-action="help">先看玩法</button></div>' +
       '</div></div>';
   }
@@ -841,6 +861,7 @@
   function renderSect() {
     if (!UI.game) return;
     var st = stats();
+    var rc = st.rankCounts || {};
     var d = date(UI.game);
     var view = document.getElementById('view');
     var selected = UI.selectedBuilding ? E.buildingById(UI.game, UI.selectedBuilding) : null;
@@ -864,9 +885,9 @@
       '<div class="stat-grid">' +
       '<div class="stat"><small>灵气</small><b>' + st.aura + '</b><span>修炼加成</span></div>' +
       '<div class="stat"><small>风水</small><b>' + st.fengShui + '</b><span>' + st.fsGrade + '</span></div>' +
-      '<div class="stat"><small>弟子</small><b>' + st.innerCount + '<em>内</em> / ' + st.outerCount + '<em>外</em></b><span>床位 ' + st.housing + '</span></div>' +
-      '<div class="stat"><small>存粮</small><b>' + st.foodDays + '<em>日</em></b><span>每日 ' + st.dailyFood + '</span></div>' +
-      '<div class="stat"><small>内门战力</small><b>' + fmt(st.power) + '</b><span>山门守备</span></div>' +
+      '<div class="stat"><small>弟子</small><b>' + (rc.menial || 0) + '<em>杂</em> ' + (rc.outer || 0) + '<em>外</em> ' + (rc.inner || 0) + '<em>内</em></b><span>真传 ' + (rc.core || 0) + ' · 长老 ' + (rc.elder || 0) + '</span></div>' +
+      '<div class="stat"><small>存粮</small><b>' + st.foodDays + '<em>日</em></b><span>每日 ' + st.dailyFood + ' · 床位 ' + st.housing + '</span></div>' +
+      '<div class="stat"><small>门中战力</small><b>' + fmt(st.power) + '</b><span>山门守备</span></div>' +
       '<div class="stat"><small>空地</small><b>' + countBuildable() + '</b><span>可营造</span></div>' +
       '</div>' +
       '<div class="fs-track"><div class="fs-track-head"><span>风水格局</span><span>' + st.fsGrade + '</span></div>' + bar(st.fengShui, 'bar-jade') + '</div>' +
@@ -931,31 +952,31 @@
   /* ------------------------------------------------------------------ */
   function renderDisciples() {
     var list = E.aliveDisciples(UI.game).slice().sort(function (a, b) {
-      if (a.role !== b.role) return a.role === 'inner' ? -1 : 1;
+      var diff = E.rankOrder(b) - E.rankOrder(a);
+      if (diff) return diff;
       return (b.realm - a.realm) || (b.layer - a.layer) || a.name.localeCompare(b.name, 'zh');
     });
-    if (UI.filter === 'inner') list = list.filter(function (d) { return d.role === 'inner'; });
-    if (UI.filter === 'outer') list = list.filter(function (d) { return d.role === 'outer'; });
+    var rankFilters = ['menial', 'outer', 'inner', 'core', 'elder'];
+    if (rankFilters.indexOf(UI.filter) >= 0) list = list.filter(function (d) { return E.rankOf(d).id === UI.filter; });
     if (UI.filter === 'idle') list = list.filter(function (d) { return !d.job && !d.missionId; });
     if (UI.filter === 'hurt') list = list.filter(function (d) { return d.injury > 20 || d.health < 70; });
     if (UI.filter === 'mission') list = list.filter(function (d) { return d.missionId; });
-    var filters = [['all', '全部'], ['inner', '内门'], ['outer', '外门'], ['idle', '空闲'], ['hurt', '受伤'], ['mission', '在外']];
+    var filters = [['all', '全部'], ['menial', '杂役'], ['outer', '外门'], ['inner', '内门'], ['core', '真传'], ['elder', '长老'], ['idle', '空闲'], ['hurt', '受伤'], ['mission', '在外']];
     var st = stats();
     document.getElementById('view').innerHTML = '<div class="view-page">' +
-      '<div class="view-head"><div><p class="eyebrow">DISCIPLES OF THE SECT</p><h2>山中弟子</h2><p>外门劳作，内门修行。人各有命，也各有各的心事。</p></div>' +
-      '<div class="view-head-actions"><span class="capacity-note">床位 ' + st.housing + ' · 弟子 ' + (st.innerCount + st.outerCount) + '</span><button class="btn btn-primary" data-action="recruit">招收外门 <small>20 灵石</small></button></div></div>' +
+      '<div class="view-head"><div><p class="eyebrow">DISCIPLES OF THE SECT</p><h2>山中弟子</h2><p>杂役起步，外门行走，内门修行，真传问道。</p></div>' +
+      '<div class="view-head-actions"><span class="capacity-note">床位 ' + st.housing + ' · 弟子 ' + E.aliveDisciples(UI.game).length + '</span><button class="btn btn-primary" data-action="recruit">招收杂役 <small>20 灵石</small></button></div></div>' +
       '<div class="filter-tabs">' + filters.map(function (f) {
         return '<button class="filter-chip ' + (UI.filter === f[0] ? 'active' : '') + '" data-action="filter" data-value="' + f[0] + '">' + f[1] + '<small>' + (f[0] === 'all' ? E.aliveDisciples(UI.game).length : listCount(f[0])) + '</small></button>';
       }).join('') + '</div>' +
       '<div class="disciple-grid">' + list.map(discipleCard).join('') + '</div>' +
-      (list.length ? '' : '<div class="empty-state">' + seal('静') + '<h3>这里暂时没有人</h3><p>换个筛选，或者去山门外招几个弟子。</p><button class="btn btn-ghost" data-action="recruit">招收外门</button></div>') +
+      (list.length ? '' : '<div class="empty-state">' + seal('静') + '<h3>这里暂时没有人</h3><p>换个筛选，或者去山门外招几个弟子。</p><button class="btn btn-ghost" data-action="recruit">招收杂役</button></div>') +
       '</div>';
   }
 
   function listCount(filter) {
     var list = E.aliveDisciples(UI.game);
-    if (filter === 'inner') return list.filter(function (d) { return d.role === 'inner'; }).length;
-    if (filter === 'outer') return list.filter(function (d) { return d.role === 'outer'; }).length;
+    if (['menial', 'outer', 'inner', 'core', 'elder'].indexOf(filter) >= 0) return list.filter(function (d) { return E.rankOf(d).id === filter; }).length;
     if (filter === 'idle') return list.filter(function (d) { return !d.job && !d.missionId; }).length;
     if (filter === 'hurt') return list.filter(function (d) { return d.injury > 20 || d.health < 70; }).length;
     if (filter === 'mission') return list.filter(function (d) { return d.missionId; }).length;
@@ -984,10 +1005,38 @@
     return '<label class="job-quick ' + (extraClass || '') + '"><span>' + (label || '差事') + '</span><select class="job-select" data-action="assign-select" data-id="' + d.id + '" aria-label="为' + h(d.name) + '安排差事">' + options + '</select></label>';
   }
 
+  function promotionPanel(d) {
+    var q = E.promotionQuote(UI.game, d);
+    if (!q || !q.next) return '';
+    var req = q.req || {};
+    var realmOk = d.realm > req.realm || (d.realm === req.realm && d.layer >= (req.layer || 0));
+    var aptOk = E.aptitude(d) >= (req.aptitude || 0);
+    var stonesOk = (UI.game.resources.stones || 0) >= (req.stones || 0);
+    var seatOk = !req.seat || q.elderCount < q.maxElders;
+    var rows = [
+      ['境界', realmOk, D.REALMS[req.realm].name + (req.layer ? '第' + req.layer + '层' : '')],
+      ['资质', aptOk, '资质 ' + (req.aptitude || 0) + ' 以上'],
+      ['灵石', stonesOk, (req.stones || 0) + ' 灵石']
+    ];
+    if (req.seat) rows.push(['长老席位', seatOk, q.elderCount + ' / ' + q.maxElders]);
+    return '<div class="detail-section promotion-panel">' +
+      '<div class="detail-section-head"><h4>晋升</h4><span>下一阶 · ' + h(q.next.name) + '</span></div>' +
+      '<div class="promotion-next">' + rankBadge(q.next) + '<small>' + h(q.next.desc || '') + '</small></div>' +
+      '<div class="promotion-reqs">' + rows.map(function (r) {
+        return '<span class="promotion-req ' + (r[1] ? 'is-met' : 'is-missing') + '"><i>' + (r[1] ? '✓' : '·') + '</i>' + h(r[0]) + '<b>' + h(r[2]) + '</b></span>';
+      }).join('') + '</div>' +
+      '<button class="btn ' + (q.ok ? 'btn-jade' : 'btn-ghost') + ' btn-sm btn-block" data-action="promote" data-id="' + d.id + '" ' + (q.ok ? '' : 'disabled') + '>' +
+      (q.ok ? '晋升' + h(q.next.name.replace('弟子', '')) + (q.stonesNeed ? ' · ' + q.stonesNeed + ' 灵石' : '') : '条件未满足') +
+      '</button>' +
+      (q.ok ? '' : '<p class="promotion-missing">' + h(q.missing.join('；')) + '</p>') +
+      '</div>';
+  }
+
   function discipleCard(d) {
     var pr = E.stageProgress(d);
     var need = pr.need;
     var isBottleneck = d.exp >= need && d.realm < 9;
+    var promo = E.promotionQuote(UI.game, d);
     var job = d.job ? E.buildingById(UI.game, d.job) : null;
     var jobName = d.missionId ? '在外历练' : job ? E.def(job).name : '闲居';
     return '<article class="disciple-card ' + (d.id === UI.game.playerId ? 'is-player' : '') + '">' +
@@ -997,7 +1046,7 @@
       '<div class="dc-traits">' + (d.traits || []).slice(0, 3).map(function (t) { return '<span class="mini-chip">' + h(D.TRAITS[t] ? D.TRAITS[t].name : t) + '</span>'; }).join('') + '</div>' +
       '<div class="dc-actions"><button class="btn btn-ghost btn-sm" data-action="open-disciple" data-id="' + d.id + '">详情</button>' +
       (isBottleneck ? '<button class="btn btn-primary btn-sm" data-action="breakthrough" data-id="' + d.id + '">助其突破</button>' : '') +
-      (d.role === 'outer' && d.realm === 0 && d.layer >= 2 ? '<button class="btn btn-jade btn-sm" data-action="promote" data-id="' + d.id + '">晋升内门</button>' : '') +
+      (promo.ok ? '<button class="btn btn-jade btn-sm" data-action="promote" data-id="' + d.id + '">晋升' + h(promo.next.name.replace('弟子', '')) + '</button>' : '') +
       '</div></article>';
   }
 
@@ -1012,8 +1061,9 @@
       var pill = D.PILLS[p];
       return '<button class="pill-use" data-action="use-pill" data-id="' + d.id + '" data-pill="' + p + '">' + seal(pill.glyph) + '<span><b>' + h(pill.name) + '</b><small>' + h(pill.desc) + '</small></span><em>×' + UI.game.pills[p] + '</em></button>';
     }).join('');
-    var promoteReq = d.role === 'outer' && d.realm === 0 && d.layer >= 2 && E.aptitude(d) >= 2;
-    var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + (d.id === UI.game.playerId ? 'SECT MASTER' : E.isAscended(d) ? 'ASCENDED' : d.role === 'inner' ? 'INNER DISCIPLE' : 'OUTER DISCIPLE') + '</p><h2>' + h(d.name) + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(E.isAscended(d) ? '超脱' : stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
+    var rank = E.rankOf(d);
+    var eyebrow = d.id === UI.game.playerId ? 'SECT MASTER' : E.isAscended(d) ? 'ASCENDED' : rank.id === 'elder' ? 'ELDER' : rank.id === 'core' ? 'CORE DISCIPLE' : rank.id === 'inner' ? 'INNER DISCIPLE' : rank.id === 'menial' ? 'MENIAL DISCIPLE' : 'OUTER DISCIPLE';
+    var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + eyebrow + '</p><h2>' + h(d.name) + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(E.isAscended(d) ? '超脱' : stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
       '<div class="detail-body">' +
       '<div class="detail-bio">' + h(d.bio || '山中岁月长，来日方长。') + '</div>' +
       (UI.settings.autoPause ? '<div class="pause-note">时间已暂停 · 可安心安排差事</div>' : '') +
@@ -1022,11 +1072,11 @@
       '<div class="stat-pills"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>战力 <b>' + fmt(E.power(d, UI.game)) + '</b></span><span>灵根 <b>' + h(rootOf(d).name) + '</b></span><span title="' + h(E.techniqueOf(d).desc) + '">功法 <b>' + h(E.techniqueOf(d).name) + '</b></span></div>' +
       '<p class="tech-note">' + h(E.techniqueOf(d).desc) + '</p>' +
       (isBottleneck ? '<div class="bottleneck-box">' + seal('破') + '<div><b>已至瓶颈</b><p>突破成功率 ' + Math.round(E.breakChance(d, UI.game) * 100) + '%</p></div></div><div class="detail-actions"><button class="btn btn-primary" data-action="breakthrough" data-id="' + d.id + '">尝试突破</button>' + ((UI.game.pills.pojing || 0) > 0 ? '<button class="btn btn-jade" data-action="breakthrough-pill" data-id="' + d.id + '">服破境丹突破</button>' : '') + '</div>' : '') +
-      (promoteReq ? '<div class="detail-actions"><button class="btn btn-jade" data-action="promote" data-id="' + d.id + '">晋升内门 · 50 灵石</button></div>' : '') +
       '</div>' +
       '<div class="detail-col"><h4>状态</h4><div class="need-list">' + needBar('气血', d.health, d.health < 50 ? 'bar-red' : 'bar-jade') + needBar('筋骨', 100 - d.injury, d.injury > 30 ? 'bar-red' : 'bar-jade') + '</div>' +
       '<div class="trait-row">' + (d.traits || []).map(function (t) { var tr = D.TRAITS[t]; return tr ? '<span class="trait-chip ' + (tr.rarity === '天' ? 'trait-heaven' : tr.rarity === '地' ? 'trait-earth' : '') + '" title="' + h(tr.desc) + '">' + h(tr.name) + '</span>' : ''; }).join('') + '</div>' +
       '</div></div>' +
+      promotionPanel(d) +
       relationSection(d) +
       '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (d.missionId ? '在外历练' : E.isAscended(d) ? '已飞升 · 可外派历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
       (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : E.isAscended(d) ? '<p class="ascended-note">已飞升，不再领山中差事；仍可在外派历练中随队出行。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job', '安排') +
@@ -1111,6 +1161,8 @@
 
   function missionView() {
     var day = UI.game.day;
+    var maxTeams = E.maxMissionTeams(UI.game);
+    var activeCount = UI.game.missions.length;
     var orders = UI.game.missionOrders || [];
     var activeOrderIds = {};
     var active = UI.game.missions.map(function (m) {
@@ -1128,20 +1180,24 @@
     var cards = D.MISSIONS.map(function (m) {
       var reached = E.missionReachable(UI.game, m);
       var order = orders.find(function (o) { return o.missionId === m.id; });
-      var req = m.danger === 0 ? '外门可去' : '需内门 · ' + D.REALMS[m.minRealm].short;
+      var rank = D.RANK_MAP[m.minRank || 'outer'];
+      var req = '需' + rank.name + ' · ' + D.REALMS[m.minRealm].short;
       var reward = [];
       if (m.rewards.food) reward.push('食物');
+      if (m.rewards.wood) reward.push('木材');
       if (m.rewards.herbs) reward.push('灵草');
+      if (m.rewards.stone) reward.push('石料');
       if (m.rewards.stones) reward.push('灵石');
       if (m.rewards.pills) reward.push('丹药');
+      var full = activeCount >= maxTeams;
       return '<article class="mission-card panel ' + (!reached ? 'locked' : '') + (order ? ' repeating' : '') + '">' +
         '<div class="mission-card-head"><span class="mission-glyph" style="--mc:' + m.color + '">' + m.glyph + '</span><div><h3>' + h(m.name) + '</h3><small>危险 ' + '◆'.repeat(m.danger || 0) + (m.danger ? '' : '◇') + ' · ' + m.days + ' 日</small></div></div>' +
         '<p>' + h(m.desc) + '</p><div class="mission-req"><span>' + req + '</span><span>建议战力 ' + fmt(m.minPower || 0) + '</span></div>' +
         '<div class="mission-reward">' + reward.map(function (r) { return '<span class="mini-chip">' + r + '</span>'; }).join('') + (order ? '<span class="mini-chip mini-chip-jade">常驻</span>' : '') + '</div>' +
-        '<button class="btn btn-ghost btn-sm btn-block" data-action="mission-open" data-id="' + m.id + '" ' + (!reached || order ? 'disabled' : '') + '>' + (order ? '常驻中' : reached ? '安排历练' : '声望不足') + '</button>' +
+        '<button class="btn btn-ghost btn-sm btn-block" data-action="mission-open" data-id="' + m.id + '" ' + (!reached || order || full ? 'disabled' : '') + '>' + (order ? '常驻中' : full ? '队伍已满' : reached ? '安排历练' : '声望不足') + '</button>' +
         '</article>';
     }).join('');
-    return '<div class="mission-layout">' + (active ? '<div class="active-missions">' + active + '</div>' : '') + (waiting ? '<div class="mission-orders">' + waiting + '</div>' : '') + '<div class="mission-grid">' + cards + '</div></div>';
+    return '<div class="mission-layout"><div class="mission-team-count"><span>在外队伍</span><b>' + activeCount + ' / ' + maxTeams + '</b><small>宗门等级提升后，可同时派出的队伍会增加。</small></div>' + (active ? '<div class="active-missions">' + active + '</div>' : '') + (waiting ? '<div class="mission-orders">' + waiting + '</div>' : '') + '<div class="mission-grid">' + cards + '</div></div>';
   }
 
   function alchemyView() {
@@ -1170,18 +1226,40 @@
   }
 
   function studyView() {
-    var nodes = D.RESEARCH.map(function (n) {
+    var branches = ['灵植', '丹道', '阵法', '剑道'];
+    var colors = { '灵植': '#6f8f5e', '丹道': '#a35b4a', '阵法': '#5f8790', '剑道': '#8a7450' };
+    function reqNames(n) {
+      return (n.requires || []).map(function (r) { var x = D.RESEARCH.find(function (q) { return q.id === r; }); return x ? x.name : r; }).join('、');
+    }
+    function nodeHtml(n) {
       var done = E.hasResearch(UI.game, n.id);
       var canReq = (n.requires || []).every(function (r) { return E.hasResearch(UI.game, r); });
       var can = !done && canReq && (UI.game.insight || 0) >= n.cost;
-      return '<article class="research-card panel ' + (done ? 'done' : '') + '">' +
-        '<div class="research-head"><span class="research-glyph">' + n.glyph + '</span><div><h3>' + h(n.name) + '</h3><small>' + (done ? '已参研' : '需悟道 ' + n.cost) + '</small></div></div>' +
-        '<p>' + h(n.desc) + '</p><div class="research-effect">' + h(n.effect) + '</div>' +
-        (n.requires.length ? '<div class="research-req">前置：' + n.requires.map(function (r) { var x = D.RESEARCH.find(function (q) { return q.id === r; }); return x ? x.name : r; }).join('、') + '</div>' : '') +
-        '<button class="btn ' + (done ? 'btn-ghost' : can ? 'btn-primary' : 'btn-ghost') + ' btn-sm btn-block" data-action="research" data-id="' + n.id + '" ' + (!can ? 'disabled' : '') + '>' + (done ? '已参研' : canReq ? '参研' : '前置未成') + '</button>' +
+      var state = done ? 'is-done' : can ? 'is-ready' : !canReq ? 'is-locked' : 'is-poor';
+      var label = done ? '已参研' : can ? '参研 · ' + n.cost : !canReq ? '前置未成' : '悟道不足';
+      return '<article class="research-node panel ' + state + '">' +
+        '<div class="research-node-head"><span class="research-glyph">' + n.glyph + '</span><div><h3>' + h(n.name) + '</h3><small>' + h(n.effect) + '</small></div><span class="research-tier">' + n.tier + '</span></div>' +
+        '<p>' + h(n.desc) + '</p>' +
+        '<div class="research-req">' + (n.requires && n.requires.length ? '前置：' + h(reqNames(n)) : '基础参研') + '</div>' +
+        '<button class="btn ' + (can ? 'btn-primary' : 'btn-ghost') + ' btn-sm btn-block" data-action="research" data-id="' + n.id + '" ' + (can ? '' : 'disabled') + '>' + label + '</button>' +
         '</article>';
+    }
+    var columns = branches.map(function (branch) {
+      var nodes = D.RESEARCH.filter(function (n) { return n.branch === branch; }).sort(function (a, b) { return a.tier - b.tier; });
+      return '<div class="research-branch" style="--branch:' + colors[branch] + '">' +
+        '<div class="research-branch-head"><span>' + branch + '</span><small>' + nodes.length + ' 阶</small></div>' +
+        '<div class="research-nodes">' + nodes.map(nodeHtml).join('') + '</div></div>';
     }).join('');
-    return '<div class="study-top"><div class="panel insight-panel"><div><p class="eyebrow">INSIGHT</p><h3>' + fmt(UI.game.insight) + '</h3><span>悟道点 · 藏经阁每日产出</span></div>' + seal('道') + '</div><div class="panel small-panel"><b>参研之道</b><p>藏经阁有人当值时，会持续产出悟道。参研可解锁新的建筑、丹方与宗门加成。</p></div></div><div class="research-grid">' + nodes + '</div>';
+    var cap = D.RESEARCH.find(function (n) { return n.id === 'dadian'; });
+    var capDone = E.hasResearch(UI.game, cap.id);
+    var capReq = (cap.requires || []).every(function (r) { return E.hasResearch(UI.game, r); });
+    var capCan = !capDone && capReq && (UI.game.insight || 0) >= cap.cost;
+    var capHtml = '<article class="research-capstone panel ' + (capDone ? 'is-done' : capCan ? 'is-ready' : 'is-locked') + '">' +
+      '<div class="research-capstone-mark">' + cap.glyph + '</div>' +
+      '<div class="research-capstone-main"><h3>' + h(cap.name) + '</h3><p>' + h(cap.desc) + '</p><div class="research-req">前置：' + h(reqNames(cap)) + '</div></div>' +
+      '<button class="btn ' + (capCan ? 'btn-primary' : 'btn-ghost') + ' btn-sm" data-action="research" data-id="' + cap.id + '" ' + (capCan ? '' : 'disabled') + '>' + (capDone ? '已参研' : capCan ? '参研 · ' + cap.cost : capReq ? '悟道不足' : '前置未成') + '</button>' +
+      '</article>';
+    return '<div class="study-top"><div class="panel insight-panel"><div><p class="eyebrow">INSIGHT</p><h3>' + fmt(UI.game.insight) + '</h3><span>悟道点 · 藏经阁每日产出</span></div>' + seal('道') + '</div><div class="panel small-panel"><b>参研之道</b><p>四条支线各自递进，互不阻塞；顶级道典需要多条支线交汇。参研可解锁新的建筑、丹方与宗门加成。</p></div></div><div class="research-tree">' + columns + '</div>' + capHtml;
   }
 
   /* ------------------------------------------------------------------ */
@@ -1387,10 +1465,10 @@
 
   function openHelp() {
     var content = '<div class="help-modal"><div class="modal-head"><div><p class="eyebrow">HOW TO PLAY</p><h2>宗门入门</h2></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="help-body">' +
-      '<div class="help-block"><h3>一、外门与内门</h3><p>外门弟子负责灵田、药圃、膳堂等劳作；内门弟子专注修炼，也可守丹房、藏经阁与演武场。外门弟子修到炼气三层，可花 50 灵石晋升内门。</p></div>' +
+      '<div class="help-block"><h3>一、身份与晋升</h3><p>弟子从杂役做起：杂役做粗活，外门可去药圃、藏经阁与医馆，内门可进静室、丹房与演武场，真传可领任何差事。晋升需要境界、资质与灵石；真传中资质足够者可被立为长老，长老席位随宗门品阶增加。</p></div>' +
       '<div class="help-block"><h3>二、四时与吃穿</h3><p>灵田和药圃受季节影响，冬天近乎绝收。弟子每天消耗粮食；膳堂有人当值可减少消耗。床位不足、饥饿和受伤都会拖慢修行。</p></div>' +
-      '<div class="help-block"><h3>三、风水与修炼</h3><p>静室、聚灵阵和灵脉提升灵气；建筑相邻会产生风水加成。灵气与风水越高，弟子修炼越快，突破也越稳。内门弟子会优先进入有空位的静室。</p></div>' +
-      '<div class="help-block"><h3>四、事务</h3><p>藏经阁产出悟道，用于参研。丹房把灵草炼成丹药。历练可派弟子下山，带回灵石、灵草、丹药与声望；受伤的弟子需要药庐休养。</p></div>' +
+      '<div class="help-block"><h3>三、风水与修炼</h3><p>静室、聚灵阵和灵脉提升灵气；建筑相邻会产生风水加成。灵气与风水越高，弟子修炼越快，突破也越稳。内门及以上弟子会优先进入有空位的静室。</p></div>' +
+      '<div class="help-block"><h3>四、事务</h3><p>藏经阁产出悟道，用于参研。参研树分灵植、丹道、阵法、剑道四支，逐级解锁；顶级道典需要多支交汇。丹房把灵草炼成丹药。历练可派弟子下山，带回木材、石料、灵石、丹药与声望。</p></div>' +
       '<div class="help-block"><h3>五、掌门与传承</h3><p>掌门是固定身份，与普通弟子一样可以领差事、随队历练。掌门若遭遇不测，山门会暂停，需要你从弟子中另立掌门后才能继续。选掌门时优先看资质与境界。</p></div>' +
       '<div class="help-block"><h3>六、目标</h3><p>提升声望，让宗门从荒山小门一路晋为仙道圣地；同时培养弟子渡劫飞升。飞升后不再领山中差事，但仍可外派历练。</p></div>' +
       '<div class="settings-note"><b>提示</b><p>' + D.TIPS.map(function (t) { return '· ' + h(t); }).join('<br>') + '</p></div>' +
@@ -1638,6 +1716,8 @@
   function openMissionModal() {
     var m = D.MISSIONS.find(function (x) { return x.id === UI.missionPick.missionId; });
     if (!m) return;
+    var rank = D.RANK_MAP[m.minRank || 'outer'];
+    var maxTeams = E.maxMissionTeams(UI.game);
     var repeat = UI.missionPick.repeat !== false;
     var reserved = {};
     (UI.game.missionOrders || []).forEach(function (o) {
@@ -1647,14 +1727,14 @@
     var selected = UI.missionPick.ids;
     var power = selected.reduce(function (s, id) { var d = E.discipleById(UI.game, id); return s + (d ? E.power(d, UI.game) : 0); }, 0);
     var content = '<div class="modal-head"><div><p class="eyebrow">EXPEDITION</p><h2>' + h(m.name) + '</h2><p class="detail-sub">危险 ' + (m.danger || 0) + ' · ' + m.days + ' 日 · 建议战力 ' + fmt(m.minPower || 0) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="detail-body"><p class="detail-bio">' + h(m.desc) + ' ' + h(m.flavor) + '</p>' +
-      '<div class="mission-pick-summary"><span>已选 <b>' + selected.length + '</b> / 2</span><span>队伍战力 <b>' + fmt(power) + '</b></span></div>' +
+      '<div class="mission-pick-summary"><span>已选 <b>' + selected.length + '</b> / 2</span><span>队伍战力 <b>' + fmt(power) + '</b></span><span>在外队伍 <b>' + UI.game.missions.length + ' / ' + maxTeams + '</b></span></div>' +
       '<button class="repeat-toggle ' + (repeat ? 'active' : '') + '" data-action="mission-repeat"><span class="repeat-mark">∞</span><span><b>常驻历练</b><small>归来休整两日后自动再出发，直到你叫停。</small></span><em>' + (repeat ? '已开启' : '关闭') + '</em></button>' +
       '<div class="pick-list">' + (list.length ? list.map(function (d) {
-        var roleOk = m.allowOuter || d.role === 'inner';
+        var roleOk = E.isAscended(d) || E.rankAtLeast(d, rank.id);
         var realmOk = d.realm >= (m.minRealm || 0);
         var healthOk = d.health >= 30;
         var disabled = !roleOk || !realmOk || !healthOk || (selected.length >= 2 && selected.indexOf(d.id) < 0);
-        var reason = !roleOk ? '需内门' : !realmOk ? '境界不足' : !healthOk ? '伤势未愈' : '';
+        var reason = !roleOk ? '需' + rank.name : !realmOk ? '境界不足' : !healthOk ? '伤势未愈' : '';
         return '<button class="pick-card ' + (selected.indexOf(d.id) >= 0 ? 'active' : '') + '" data-action="mission-pick" data-id="' + d.id + '" ' + (disabled ? 'disabled' : '') + '>' + avatarSvg(d, 38) + '<span><b>' + h(d.name) + '</b><small>' + roleBadge(d) + ' ' + h(stage(d)) + ' · 战力 ' + fmt(E.power(d, UI.game)) + (reason ? ' · ' + reason : '') + '</small></span><em>' + (selected.indexOf(d.id) >= 0 ? '✓' : '') + '</em></button>';
       }).join('') : '<p class="muted mission-empty">暂无空闲弟子。常驻队伍归来休整时也会留在此处。</p>') + '</div>' +
       '<div class="modal-actions"><button class="btn btn-ghost" data-action="close-modal">再想想</button><button class="btn btn-primary" data-action="launch-mission" ' + (selected.length ? '' : 'disabled') + '>' + (repeat ? '常驻启程' : '启程') + ' · 食物 ' + (3 * selected.length) + '</button></div></div>';
@@ -1820,7 +1900,7 @@
       }
       case 'promote':
         var pr = E.promote(UI.game, id);
-        if (!pr.ok) toast(pr.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); toast('晋升内门。', 'good'); }
+        if (!pr.ok) toast(pr.msg, 'warn'); else { saveNow(); renderAll(); refreshAssignmentModal(); toast('晋升' + pr.rank.name + '。', 'good'); }
         break;
       case 'choose-master': {
         var cm = E.chooseMaster(UI.game, id);

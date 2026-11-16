@@ -117,29 +117,31 @@ test('不能重叠建造，也不能在不可建地形建造', function () {
   assert.strictEqual(E.build(s, 'dorm', 0, 0).ok, false);
 });
 
-test('外门弟子不能进静室，内门弟子不能做粗活', function () {
+test('身份决定可去的工种，晋升后可做低阶差事', function () {
   var s = newState();
   var outer = E.outerDisciples(s)[0];
   var med = s.buildings.find(function (b) { return b.type === 'meditation'; });
   assert.strictEqual(E.assign(s, outer.id, med.id).ok, false);
   outer.realm = 0;
-  outer.layer = 2;
+  outer.layer = 6;
   outer.aptitude = Math.max(3, outer.aptitude);
   s.resources.stones = 200;
   assert.strictEqual(E.promote(s, outer.id).ok, true);
   var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
-  assert.strictEqual(E.assign(s, outer.id, farm.id).ok, false);
+  assert.strictEqual(E.assign(s, outer.id, farm.id).ok, true);
 });
 
-test('外门弟子达到炼气三层可晋升内门', function () {
+test('外门弟子达到炼气六层可晋升内门', function () {
   var s = newState();
   var d = E.outerDisciples(s)[0];
   d.realm = 0;
-  d.layer = 2;
+  d.layer = 6;
+  d.aptitude = Math.max(3, d.aptitude);
   s.resources.stones = 200;
   var before = s.resources.stones;
   var res = E.promote(s, d.id);
   assert.ok(res.ok);
+  assert.strictEqual(d.rank, 'inner');
   assert.strictEqual(d.role, 'inner');
   assert.ok(s.resources.stones < before);
   assert.strictEqual(s.stats.promoted, 1);
@@ -248,6 +250,7 @@ test('招徒候选与入门', function () {
   assert.ok(r.ok);
   assert.ok(r.candidates.length >= 2);
   var d = r.candidates[0];
+  assert.strictEqual(d.rank, 'menial');
   var n = s.disciples.length;
   assert.ok(E.chooseRecruit(s, d.id).ok);
   assert.strictEqual(s.disciples.length, n + 1);
@@ -670,6 +673,93 @@ test('掌门领的差事读档后不会丢', function () {
   E.normalizeState(s);
   assert.strictEqual(master.job, farm.id);
   assert.ok(farm.workers.indexOf(master.id) >= 0);
+});
+
+test('伐木场与采石场会按工人产出木材和石料', function () {
+  var s = newState(24);
+  s.lastEventDay = 9999;
+  var ly = E.buildAuto(s, 'lumberyard');
+  var q = E.buildAuto(s, 'quarry');
+  assert.ok(ly.ok, ly.msg);
+  assert.ok(q.ok, q.msg);
+  for (var i = 0; i < 2; i++) { clearPending(s); E.tick(s); }
+  var workers = E.outerDisciples(s);
+  assert.ok(E.assign(s, workers[0].id, ly.building.id).ok);
+  assert.ok(E.assign(s, workers[1].id, q.building.id).ok);
+  var wood = s.resources.wood;
+  var stone = s.resources.stone;
+  clearPending(s);
+  E.tick(s);
+  assert.ok(s.resources.wood > wood, '伐木场应产出木材');
+  assert.ok(s.resources.stone > stone, '采石场应产出石料');
+});
+
+test('宗门等级会放大敌方战力', function () {
+  var s = newState(25);
+  var low = E.simulateBattle(s, { danger: 2, power: 100, name: '测试敌人' });
+  assert.ok(low.lines[0].indexOf('100') >= 0);
+  s.resources.renown = 220;
+  assert.strictEqual(E.enemyScale(s), 1 + 3 * 0.35);
+  var high = E.simulateBattle(s, { danger: 2, power: 100, name: '测试敌人' });
+  assert.ok(high.lines[0].indexOf('205') >= 0, high.lines[0]);
+});
+
+test('宗门等级提升会增加历练队伍上限', function () {
+  var s = newState(26);
+  assert.strictEqual(E.maxMissionTeams(s), 3);
+  s.resources.renown = 220;
+  assert.strictEqual(E.maxMissionTeams(s), 4);
+  s.resources.renown = 800;
+  assert.strictEqual(E.maxMissionTeams(s), 5);
+  assert.strictEqual(D.MISSIONS.length, 10);
+  assert.strictEqual(D.MISSIONS.find(function (m) { return m.id === 'tianwai'; }).minRank, 'elder');
+});
+
+test('真传晋升长老受席位限制', function () {
+  var s = newState(27);
+  var list = E.outerDisciples(s);
+  var a = list[0], b = list[1];
+  [a, b].forEach(function (d) {
+    d.rank = 'core';
+    d.role = 'inner';
+    d.title = '真传弟子';
+    d.realm = 2;
+    d.layer = 0;
+    d.aptitude = 4;
+  });
+  s.resources.stones = 2000;
+  assert.strictEqual(E.maxElders(s), 1);
+  assert.ok(E.promote(s, a.id).ok);
+  assert.strictEqual(a.rank, 'elder');
+  var quote = E.promotionQuote(s, b);
+  assert.strictEqual(quote.ok, false);
+  assert.ok(quote.missing.some(function (m) { return m.indexOf('长老席位') >= 0; }));
+});
+
+test('参研树必须按支线前置逐级解锁', function () {
+  var s = newState(28);
+  s.insight = 1000;
+  assert.strictEqual(E.researchNode(s, 'wanmu').ok, false);
+  assert.ok(E.researchNode(s, 'lingzhi').ok);
+  assert.ok(E.researchNode(s, 'fengrao').ok);
+  assert.ok(E.researchNode(s, 'yaowang').ok);
+  assert.ok(E.researchNode(s, 'wanmu').ok);
+  assert.strictEqual(E.researchNode(s, 'dadian').ok, false);
+});
+
+test('旧存档会迁移身份等级', function () {
+  var s = newState(29);
+  var outer = E.outerDisciples(s)[0];
+  delete outer.rank;
+  outer.role = 'outer';
+  outer.title = '外门弟子';
+  var master = E.player(s);
+  delete master.rank;
+  master.role = 'inner';
+  master.title = '掌门';
+  E.normalizeState(s);
+  assert.strictEqual(outer.rank, 'outer');
+  assert.strictEqual(master.rank, 'master');
 });
 
 console.log('\n' + passed + ' 项测试通过。\n');

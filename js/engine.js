@@ -92,16 +92,26 @@
 
   E.def = function (b) { return D.BUILDINGS[b.type] || null; };
 
-  var JOB_ROLES = {
-    meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'],
-    arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'],
-    infirmary: ['outer', 'inner']
+  E.rankOf = function (d) {
+    if (!d) return D.RANK_MAP.menial;
+    if (d.rank && D.RANK_MAP[d.rank]) return D.RANK_MAP[d.rank];
+    if (d.title === '掌门' || d.role === 'master') return D.RANK_MAP.master;
+    if (d.title === '长老' || d.role === 'elder') return D.RANK_MAP.elder;
+    if (d.role === 'inner') return D.RANK_MAP.inner;
+    return D.RANK_MAP.outer;
   };
+  E.rankOrder = function (d) { return E.rankOf(d).order; };
+  E.rankAtLeast = function (d, rankId) {
+    var min = D.RANK_MAP[rankId] || D.RANK_MAP.menial;
+    return E.rankOrder(d) >= min.order;
+  };
+  E.rankName = function (d) { return E.rankOf(d).name; };
+  E.rankTitle = function (d) { return E.rankOf(d).title; };
 
   function canWorkAt(b, d) {
     if (d.title === '掌门') return true;
-    var roles = JOB_ROLES[b.type];
-    return !roles || roles.indexOf(d.role) >= 0;
+    var minRank = D.JOB_RANKS[b.type];
+    return !minRank || E.rankAtLeast(d, minRank);
   }
 
   E.slotsOf = function (b) {
@@ -128,8 +138,15 @@
 
   E.disciples = function (state) { return state.disciples || []; };
   E.aliveDisciples = function (state) { return E.disciples(state).filter(function (d) { return !d.dead; }); };
-  E.innerDisciples = function (state) { return E.aliveDisciples(state).filter(function (d) { return d.role === 'inner'; }); };
-  E.outerDisciples = function (state) { return E.aliveDisciples(state).filter(function (d) { return d.role === 'outer'; }); };
+  E.innerDisciples = function (state) {
+    return E.aliveDisciples(state).filter(function (d) { return E.rankAtLeast(d, 'inner'); });
+  };
+  E.outerDisciples = function (state) {
+    return E.aliveDisciples(state).filter(function (d) { return !E.rankAtLeast(d, 'inner'); });
+  };
+  E.elders = function (state) {
+    return E.aliveDisciples(state).filter(function (d) { return E.rankOf(d).id === 'elder'; });
+  };
   E.discipleById = function (state, id) {
     for (var i = 0; i < state.disciples.length; i++) if (state.disciples[i].id === id) return state.disciples[i];
     return null;
@@ -145,7 +162,8 @@
     return E.aliveDisciples(state).filter(function (d) {
       return d.id !== state.playerId;
     }).sort(function (a, b) {
-      if (a.role !== b.role) return a.role === 'inner' ? -1 : 1;
+      var diff = E.rankOrder(b) - E.rankOrder(a);
+      if (diff) return diff;
       return E.power(b, state) - E.power(a, state);
     });
   };
@@ -161,6 +179,7 @@
     d.job = null;
     d.jobMode = 'manual';
     d.preferredJob = null;
+    d.rank = 'master';
     d.title = '掌门';
     if (d.role !== 'inner') d.role = 'inner';
     state.playerId = d.id;
@@ -275,6 +294,7 @@
     base *= 1 + (d.realm || 0) * 0.16;
     base *= 1 - Math.min(0.35, (d.injury || 0) / 260);
     if (E.hasResearch(state, 'dadian')) base *= 1.25;
+    if (E.hasResearch(state, 'dayan')) base *= 1.1;
     if (stats.buffs && stats.buffs.cult) base *= stats.buffs.cult;
     return Math.max(0.1, Math.round(base * 10) / 10);
   };
@@ -291,6 +311,8 @@
     mult *= root.power || 1;
     mult *= 1 + (d.originPower || 0);
     if (E.hasResearch(state, 'jianxin') && d.role === 'inner') mult *= 1.1;
+    if (E.hasResearch(state, 'yujian')) mult *= 1.15;
+    if (E.hasResearch(state, 'jianyi')) mult *= 1.25;
     if (d.role === 'inner') {
       state.buildings.forEach(function (b) {
         if (b.type === 'arena' && !b.construction) mult *= 1 + 0.04 * (b.level || 1);
@@ -384,6 +406,7 @@
       if (counts[type] > 2 && ['farm', 'herb', 'dorm'].indexOf(type) >= 0) fengShui -= (counts[type] - 2) * 1.5;
     });
     if (completed.length > 16) fengShui -= (completed.length - 16) * 0.5;
+    if (E.hasResearch(state, 'zhouxing')) aura += 6;
     aura += state.flags.auraBonus || 0;
     aura = Math.round(aura);
     fengShui = Math.round(clamp(fengShui, 0, 100));
@@ -406,6 +429,12 @@
 
     var inner = E.innerDisciples(state);
     var power = inner.reduce(function (sum, d) { return sum + E.power(d, state); }, 0);
+    var rankCounts = {};
+    E.aliveDisciples(state).forEach(function (d) {
+      var rid = E.rankOf(d).id;
+      rankCounts[rid] = (rankCounts[rid] || 0) + 1;
+    });
+    aura += rankCounts.elder || 0;
     var buff = null;
     (state.buffs || []).forEach(function (b) { if (b.cult) buff = b; });
 
@@ -415,6 +444,7 @@
       kitchen: kitchen,
       housing: E.housing(state),
       population: population,
+      rankCounts: rankCounts,
       innerCount: inner.length,
       outerCount: E.outerDisciples(state).length,
       dailyFood: Math.round(dailyFood * 10) / 10,
@@ -424,6 +454,16 @@
       buffs: buff,
       nextGrade: D.SECT_GRADES.find(function (g) { return g.min > (state.resources.renown || 0); }) || null
     };
+  };
+
+  E.enemyScale = function (state) {
+    var gradeIndex = E.sectStats(state).gradeIndex || 0;
+    return 1 + gradeIndex * 0.35;
+  };
+
+  E.maxMissionTeams = function (state) {
+    var gradeIndex = E.sectStats(state).gradeIndex || 0;
+    return 3 + Math.floor(gradeIndex / 2);
   };
 
   E.alerts = function (state) {
@@ -499,12 +539,15 @@
     var traits = opts.traits ? opts.traits.slice() : traitsForBackground(state, bg, traitCount);
     var baseApt = opts.aptitude != null ? opts.aptitude : clamp((root.aptitude || 3) + randInt(state, -1, 1), 1, 4);
     var id = 'd' + (state.nextDiscipleId++);
+    var rankId = opts.rank || (opts.role === 'inner' ? 'inner' : opts.role === 'outer' ? 'outer' : 'menial');
+    var rank = D.RANK_MAP[rankId] || D.RANK_MAP.menial;
     var d = {
       id: id,
       name: opts.name || randomName(state),
       gender: opts.gender || (chance(state, 0.5) ? 'f' : 'm'),
-      role: opts.role || 'outer',
-      title: opts.role === 'inner' ? '内门弟子' : '外门弟子',
+      rank: rank.id,
+      role: rank.order >= D.RANK_MAP.inner.order ? 'inner' : 'outer',
+      title: opts.title || rank.title,
       root: rootKey,
       origin: opts.origin || bg.name,
       traits: traits,
@@ -596,7 +639,7 @@
     var playerTraits = traitsForBackground(state, null, 1);
     var player = E.generateDisciple(state, {
       name: opts.playerName || '沈未央',
-      role: 'inner',
+      rank: 'master',
       root: root,
       origin: origin.name,
       traits: playerTraits,
@@ -675,15 +718,29 @@
       eff = eff / Math.max(1, workers.length);
 
       if (b.type === 'farm') {
-        var farmBonus = E.hasResearch(state, 'lingzhi') ? 1.2 : 1;
+        var farmBonus = 1;
+        if (E.hasResearch(state, 'lingzhi')) farmBonus = Math.max(farmBonus, 1.2);
+        if (E.hasResearch(state, 'fengrao')) farmBonus = Math.max(farmBonus, 1.3);
+        if (E.hasResearch(state, 'wanmu')) farmBonus = Math.max(farmBonus, 1.4);
         var farmTrait = 1 + workers.reduce(function (sum, d) { return sum + E.traitMod(d, 'farm') + (D.ROOTS[d.root] && D.ROOTS[d.root].farm ? D.ROOTS[d.root].farm - 1 : 0); }, 0) / Math.max(1, workers.length);
         var amount = 5.2 * (1 + (b.level - 1) * 0.35) * season.farm * eff * farmBonus * farmTrait;
         state.resources.food += amount;
       } else if (b.type === 'herb') {
-        var herbBonus = E.hasResearch(state, 'lingzhi') ? 1.2 : 1;
+        var herbBonus = 1;
+        if (E.hasResearch(state, 'lingzhi')) herbBonus = Math.max(herbBonus, 1.2);
+        if (E.hasResearch(state, 'fengrao')) herbBonus = Math.max(herbBonus, 1.3);
+        if (E.hasResearch(state, 'wanmu')) herbBonus = Math.max(herbBonus, 1.4);
+        if (E.hasResearch(state, 'yaowang')) herbBonus = Math.max(herbBonus, 1.5);
         var herbTrait = 1 + workers.reduce(function (sum, d) { return sum + E.traitMod(d, 'herb') + (D.ROOTS[d.root] && D.ROOTS[d.root].herb ? D.ROOTS[d.root].herb - 1 : 0); }, 0) / Math.max(1, workers.length);
         var herb = 1.45 * (1 + (b.level - 1) * 0.35) * season.herb * eff * herbBonus * herbTrait;
         state.resources.herbs += herb;
+      } else if (b.type === 'lumberyard') {
+        var woodBonus = E.hasResearch(state, 'wanmu') ? 1.4 : 1;
+        var woodTrait = 1 + workers.reduce(function (sum, d) { return sum + E.traitMod(d, 'farm') + (D.ROOTS[d.root] && D.ROOTS[d.root].farm ? D.ROOTS[d.root].farm - 1 : 0); }, 0) / Math.max(1, workers.length);
+        state.resources.wood += 4.0 * (1 + (b.level - 1) * 0.35) * season.farm * eff * woodBonus * woodTrait;
+      } else if (b.type === 'quarry') {
+        var stoneTrait = 1 + workers.reduce(function (sum, d) { return sum + E.traitMod(d, 'stone') + (D.ROOTS[d.root] && D.ROOTS[d.root].stone ? D.ROOTS[d.root].stone - 1 : 0); }, 0) / Math.max(1, workers.length);
+        state.resources.stone += 2.8 * (1 + (b.level - 1) * 0.35) * eff * stoneTrait;
       } else if (b.type === 'kitchen') {
         // 膳堂效果在食物消耗与心境中结算
       } else if (b.type === 'library') {
@@ -732,6 +789,8 @@
     var tech = E.techniqueOf(worker);
     var speed = 0.65 + (b.level - 1) * 0.2 + aptitude * 0.08 + E.traitMod(worker, 'alchemy') + (tech.alchemy || 0);
     if (worker.role === 'inner') speed += 0.15;
+    if (E.hasResearch(state, 'yaowang')) speed += 0.1;
+    if (E.hasResearch(state, 'dayan')) speed += 0.15;
     b.batch.progress += speed;
     if (b.batch.progress >= b.batch.days) {
       var r = D.RECIPES.find(function (x) { return x.id === b.batch.recipe; });
@@ -1277,7 +1336,7 @@
       if (!def || !def.slots) return { ok: false, msg: '此处不需要人手。' };
       if (b.workers.length >= E.slotsOf(b) && b.workers.indexOf(d.id) < 0) return { ok: false, msg: '此处已满员。' };
       if (!canWorkAt(b, d)) {
-        return { ok: false, msg: d.role === 'inner' ? '内门弟子不做这些粗活，可去静室、丹房、藏经阁或演武场。' : '外门弟子尚未筑基，不能入静室修炼。' };
+        return { ok: false, msg: E.rankName(d) + '尚不能在此当值。' };
       }
       if (d.job === b.id) {
         d.jobMode = auto ? 'auto' : 'manual';
@@ -1319,9 +1378,15 @@
       return b.workers.length < E.slotsOf(b) || b.id === d.job;
     });
     if (!candidates.length) return null;
-    var priorities = d.role === 'inner'
-      ? { meditation: 100, library: 58, alchemy: 54, arena: 46, infirmary: 30 }
-      : { farm: 58, herb: 56, kitchen: 52, infirmary: 42, library: 38, alchemy: 34 };
+    var rank = E.rankOf(d);
+    var priorities;
+    if (rank.order >= D.RANK_MAP.inner.order) {
+      priorities = { meditation: 100, alchemy: 64, library: 58, arena: 50, infirmary: 40, lumberyard: 22, quarry: 22, farm: 18, herb: 18, kitchen: 16 };
+    } else if (rank.order >= D.RANK_MAP.outer.order) {
+      priorities = { farm: 58, herb: 56, lumberyard: 52, quarry: 50, kitchen: 52, infirmary: 42, library: 38, guest: 34, alchemy: 30, storage: 30, well: 28, gate: 24 };
+    } else {
+      priorities = { farm: 58, lumberyard: 56, quarry: 54, kitchen: 52, well: 40, storage: 38, gate: 30 };
+    }
     var best = null, bestScore = -Infinity;
     candidates.forEach(function (b) {
       var def = E.def(b);
@@ -1330,8 +1395,8 @@
       score += (1 - b.workers.length / Math.max(1, E.slotsOf(b))) * 12;
       if (def.aura) score += def.aura;
       var traits = d.traits || [];
-      if (b.type === 'farm' || b.type === 'herb') {
-        if (traits.indexOf('shennong') >= 0) score += 32;
+      if (b.type === 'farm' || b.type === 'herb' || b.type === 'lumberyard' || b.type === 'quarry') {
+        if (traits.indexOf('shennong') >= 0) score += 28;
       }
       if (b.type === 'alchemy' && traits.indexOf('alchemy') >= 0) score += 36;
       if (b.type === 'library' && traits.indexOf('scholar') >= 0) score += 30;
@@ -1379,28 +1444,63 @@
     return { ok: true, count: added };
   };
 
+  E.maxElders = function (state) {
+    var gradeIndex = E.sectStats(state).gradeIndex || 0;
+    return 1 + Math.floor(gradeIndex / 2);
+  };
+
+  E.promotionQuote = function (state, d) {
+    if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
+    if (E.isMaster(state, d)) return { ok: false, msg: '掌门已是山门之主。' };
+    if (E.isAscended(d)) return { ok: false, msg: '已飞升，不再论资排辈。' };
+    var rank = E.rankOf(d);
+    if (!rank.promotion) return { ok: false, msg: '已至当前最高身份。' };
+    var next = D.RANK_MAP[rank.promotion.next];
+    var req = rank.promotion;
+    var missing = [];
+    if (d.realm < req.realm || (d.realm === req.realm && d.layer < (req.layer || 0))) {
+      missing.push('境界需至' + D.REALMS[req.realm].name + (req.layer ? '第' + req.layer + '层' : ''));
+    }
+    if (E.aptitude(d) < (req.aptitude || 0)) missing.push('资质需 ' + req.aptitude + ' 以上');
+    if (req.seat) {
+      var max = E.maxElders(state);
+      var elders = E.elders(state).filter(function (x) { return x.id !== d.id; }).length;
+      if (elders >= max) missing.push('长老席位已满（' + elders + '/' + max + '）');
+    }
+    var stones = req.stones || 0;
+    if ((state.resources.stones || 0) < stones) missing.push('需 ' + stones + ' 灵石');
+    return {
+      ok: missing.length === 0, msg: missing.length ? missing[0] : '可以晋升。',
+      rank: rank, next: next, nextId: next.id, req: req, missing: missing,
+      stonesNeed: stones, maxElders: E.maxElders(state), elderCount: E.elders(state).length
+    };
+  };
+
   E.promote = function (state, discipleId) {
     var d = E.discipleById(state, discipleId);
-    if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
-    if (d.role !== 'outer') return { ok: false, msg: '该弟子已是内门。' };
-    if (d.realm < 1 && (d.realm < 0 || d.layer < 2)) return { ok: false, msg: '至少修至炼气三层，方可晋升内门。' };
-    if (E.aptitude(d) < 2) return { ok: false, msg: '资质不足，强行筑基恐伤根基。' };
-    if ((state.resources.stones || 0) < 50) return { ok: false, msg: '需 50 灵石为筑基之资。' };
-    state.resources.stones -= 50;
+    var quote = E.promotionQuote(state, d);
+    if (!quote.ok) return { ok: false, msg: quote.msg, quote: quote };
+    var next = quote.next;
+    state.resources.stones -= quote.stonesNeed;
     if (d.job) {
       var old = E.buildingById(state, d.job);
       if (old) old.workers = old.workers.filter(function (id) { return id !== d.id; });
     }
     d.job = null;
-    d.role = 'inner';
-    d.title = '内门弟子';
+    d.jobMode = 'manual';
+    d.preferredJob = null;
+    d.rank = next.id;
+    d.role = next.order >= D.RANK_MAP.inner.order ? 'inner' : 'outer';
+    d.title = next.title;
     d.mood = clamp(d.mood + 12, 0, 100);
     state.stats.promoted++;
-    state.resources.renown += 3;
-    var med = state.buildings.find(function (b) { return b.type === 'meditation' && !b.construction && b.workers.length < E.slotsOf(b); });
-    if (med) { med.workers.push(d.id); d.job = med.id; }
-    E.log(state, d.name + '筑基成功，晋升内门！', 'good');
-    return { ok: true };
+    state.resources.renown += 2 + next.order;
+    if (next.order >= D.RANK_MAP.inner.order) {
+      var med = state.buildings.find(function (b) { return b.type === 'meditation' && !b.construction && b.workers.length < E.slotsOf(b); });
+      if (med) { med.workers.push(d.id); d.job = med.id; }
+    }
+    E.log(state, d.name + '晋升' + next.name + '！', 'good');
+    return { ok: true, rank: next, quote: quote };
   };
 
   E.tryBreakthrough = function (state, discipleId, usePill) {
@@ -1454,7 +1554,7 @@
     var count = 2 + (guest ? 1 : 0);
     for (var i = 0; i < count; i++) {
       var d = E.generateDisciple(state, {
-        role: 'outer', realm: 0, layer: randInt(state, 0, 1),
+        rank: 'menial', realm: 0, layer: randInt(state, 0, 1),
         aptitude: clamp(randInt(state, guest ? 2 : 1, guest ? 4 : 3), 1, 4)
       });
       d.candidate = true;
@@ -1513,7 +1613,8 @@
     if (!E.missionReachable(state, m)) return { ok: false, msg: '声望不足，尚无人知晓这条山路。' };
     if (!discipleIds || !discipleIds.length) return { ok: false, msg: '至少派一名弟子。' };
     if (discipleIds.length > 2) return { ok: false, msg: '一队最多两名弟子。' };
-    if (state.missions.length >= 2) return { ok: false, msg: '已有两队弟子在外，山中人手不够了。' };
+    var maxTeams = E.maxMissionTeams(state);
+    if (state.missions.length >= maxTeams) return { ok: false, msg: '已有 ' + maxTeams + ' 队弟子在外，山中人手不够了。' };
     var order = null;
     if (opts.orderId) {
       order = (state.missionOrders || []).find(function (o) { return o.id === opts.orderId && o.enabled; });
@@ -1528,7 +1629,8 @@
       if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
       if (d.missionId) return { ok: false, msg: '该弟子已经在外。' };
       if (d.health < 30) return { ok: false, msg: d.name + '伤势未愈，不宜远行。' };
-      if (!m.allowOuter && d.role !== 'inner' && !E.isAscended(d)) return { ok: false, msg: '此地凶险，外门弟子去不得。' };
+      var needRank = D.RANK_MAP[m.minRank || 'outer'] || D.RANK_MAP.outer;
+      if (!E.isAscended(d) && !E.rankAtLeast(d, needRank.id)) return { ok: false, msg: '此地需' + needRank.name + '及以上方可前往。' };
       if (d.realm < (m.minRealm || 0)) return { ok: false, msg: d.name + '境界不足。' };
       team.push(d);
     }
@@ -1590,9 +1692,10 @@
   };
 
   function processMissionOrders(state) {
-    if (state.missions.length >= 2) return;
+    var maxTeams = E.maxMissionTeams(state);
+    if (state.missions.length >= maxTeams) return;
     (state.missionOrders || []).slice().forEach(function (order) {
-      if (!order.enabled || state.missions.length >= 2 || state.day < order.nextTryDay) return;
+      if (!order.enabled || state.missions.length >= maxTeams || state.day < order.nextTryDay) return;
       var team = order.discipleIds.map(function (id) { return E.discipleById(state, id); }).filter(Boolean);
       if (team.length !== order.discipleIds.length || team.some(function (d) { return d.dead; })) {
         order.enabled = false;
@@ -1618,7 +1721,7 @@
     var order = m.orderId ? (state.missionOrders || []).find(function (o) { return o.id === m.orderId; }) : null;
     state.missions = state.missions.filter(function (x) { return x.id !== m.id; });
     var team = m.discipleIds.map(function (id) { return E.discipleById(state, id); }).filter(Boolean);
-    var enemyPower = 24 + region.danger * 72 + E.getDate(state).year * 16;
+    var enemyPower = (24 + region.danger * 72 + E.getDate(state).year * 16) * E.enemyScale(state);
     var ratio = m.teamPower / Math.max(1, enemyPower);
     var teamLuck = team.reduce(function (sum, d) { return sum + E.traitMod(d, 'luck') + (d.originLuck || 0); }, 0) * 0.01;
     var successChance = clamp(0.38 + (ratio - 1) * 0.48 + (region.danger === 0 ? 0.3 : 0) + teamLuck, 0.12, 0.95);
@@ -1699,14 +1802,17 @@
     opts = opts || {};
     var team = E.innerDisciples(state).filter(function (d) { return !d.missionId && d.health > 20; });
     if (!team.length) team = E.aliveDisciples(state).filter(function (d) { return d.health > 20; }).slice(0, 3);
-    var enemyPower = opts.power || (45 + (opts.danger || 1) * 65 + E.getDate(state).year * 18);
-    var teamPower = team.reduce(function (s, d) { return s + E.power(d, state); }, 0);
     var st = E.sectStats(state);
+    var basePower = opts.power || (45 + (opts.danger || 1) * 65 + E.getDate(state).year * 18);
+    var enemyPower = basePower * E.enemyScale(state);
+    var teamPower = team.reduce(function (s, d) { return s + E.power(d, state); }, 0);
     teamPower *= 1 + st.aura / 500 + st.fengShui / 1000;
+    if (E.hasResearch(state, 'hushan')) teamPower *= 1.15;
     var teamHp = Math.max(1, teamPower * 1.7);
     var enemyHp = Math.max(1, enemyPower * 2.0);
     var lines = [];
     lines.push('敌方：' + (opts.name || '来犯之敌') + '（战力 ' + Math.round(enemyPower) + '）');
+    lines.push('宗门：' + st.grade.name + ' · 敌势随山门声望增强（×' + E.enemyScale(state).toFixed(2) + '）');
     lines.push('我方：' + (team.length ? team.map(function (d) { return d.name; }).join('、') : '无人可战') + '（战力 ' + Math.round(teamPower) + '）');
     var win = false;
     if (!team.length) {
@@ -1892,7 +1998,7 @@
       if (some) some.mood = clamp(some.mood + eff.discipleMoodOne, 0, 100);
     }
     if (eff.recruit) {
-      var newD = E.generateDisciple(state, { role: 'outer', realm: 0, layer: 0, mood: 70 });
+      var newD = E.generateDisciple(state, { rank: 'menial', realm: 0, layer: 0, mood: 70 });
       state.disciples.push(newD);
       linkRelations(state, newD);
       state.stats.recruited++;
@@ -2161,6 +2267,16 @@
       d.jobMode = d.jobMode === 'manual' ? 'manual' : 'auto';
       if (d.preferredJob === undefined) d.preferredJob = d.jobMode === 'manual' ? d.job : null;
       d.dead = !!d.dead;
+      if (!D.RANK_MAP[d.rank]) {
+        if (d.id === state.playerId || d.title === '掌门') d.rank = 'master';
+        else if (d.title === '长老') d.rank = 'elder';
+        else if (d.role === 'inner') d.rank = 'inner';
+        else if (d.role === 'outer') d.rank = 'outer';
+        else d.rank = 'menial';
+      }
+      var rankDef = D.RANK_MAP[d.rank];
+      d.role = rankDef.order >= 2 ? 'inner' : 'outer';
+      d.title = rankDef.title;
       d.ascended = !!d.ascended || (!d.dead && d.realm >= 9);
       if (d.ascended) {
         d.realm = 9;
@@ -2194,6 +2310,7 @@
       var currentMaster = state.disciples.find(function (d) { return d.id === state.playerId; });
       if (currentMaster && !currentMaster.dead) {
         currentMaster.role = 'inner';
+        currentMaster.rank = 'master';
         currentMaster.title = '掌门';
         state.pendingSuccession = false;
       }

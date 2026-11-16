@@ -161,6 +161,9 @@ ul { margin: 0; padding-left: 1.1em; }
 }
 .badge-inner { color: var(--jade); border-color: color-mix(in srgb, var(--jade) 35%, var(--line)); background: color-mix(in srgb, var(--jade) 8%, var(--panel)); }
 .badge-outer { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 35%, var(--line)); background: color-mix(in srgb, var(--gold) 8%, var(--panel)); }
+.badge-menial { color: var(--muted); border-color: var(--line); background: var(--panel-2); }
+.badge-core { color: var(--cinnabar); border-color: color-mix(in srgb, var(--cinnabar) 30%, var(--line)); background: color-mix(in srgb, var(--cinnabar) 7%, var(--panel)); }
+.badge-elder { color: #7b5f84; border-color: color-mix(in srgb, #7b5f84 35%, var(--line)); background: color-mix(in srgb, #7b5f84 8%, var(--panel)); }
 .badge-player { color: var(--cinnabar); border-color: color-mix(in srgb, var(--cinnabar) 35%, var(--line)); background: color-mix(in srgb, var(--cinnabar) 8%, var(--panel)); }
 .badge-warn { color: var(--cinnabar); border-color: color-mix(in srgb, var(--cinnabar) 30%, var(--line)); }
 .badge-grade { color: var(--grade, var(--ink)); border-color: color-mix(in srgb, var(--grade, var(--line)) 45%, var(--line)); background: color-mix(in srgb, var(--grade, var(--panel)) 10%, var(--panel)); }
@@ -899,6 +902,9 @@ button.build-card.type-card { width: 100%; text-align: left; font: inherit; colo
 .mission-card-head small { color: var(--muted); font-size: 9px; }
 .mission-card > p { color: var(--muted); font-size: 10px; line-height: 1.7; min-height: 34px; }
 .mission-req { display: flex; justify-content: space-between; gap: 8px; color: var(--faint); font-size: 9px; }
+.mission-team-count { display: flex; align-items: baseline; gap: 8px; padding: 8px 11px; border: 1px dashed var(--line); border-radius: 5px; background: var(--panel-2); color: var(--muted); font-size: 10px; }
+.mission-team-count b { color: var(--jade); font-size: 13px; }
+.mission-team-count small { margin-left: auto; color: var(--faint); font-size: 9px; }
 .mission-reward { display: flex; flex-wrap: wrap; gap: 4px; }
 .mission-head-badges { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 .active-mission.is-order { border-color: color-mix(in srgb, var(--jade) 28%, var(--line)); }
@@ -981,6 +987,32 @@ button.build-card.type-card { width: 100%; text-align: left; font: inherit; colo
 .research-effect { color: var(--jade); font-size: 9px; }
 .research-req { color: var(--faint); font-size: 9px; }
 .research-card .btn { margin-top: auto; }
+.research-tree { display: grid; grid-template-columns: repeat(4, minmax(210px, 1fr)); gap: 10px; overflow-x: auto; padding: 2px 0 6px; }
+.research-branch { --branch: var(--jade); min-width: 210px; }
+.research-branch-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 2px 7px; border-bottom: 1px solid color-mix(in srgb, var(--branch) 35%, var(--line)); color: var(--branch); }
+.research-branch-head span { font-family: var(--serif); font-size: 15px; font-weight: 700; }
+.research-branch-head small { color: var(--muted); font-size: 9px; }
+.research-nodes { position: relative; display: flex; flex-direction: column; gap: 9px; padding-top: 10px; }
+.research-nodes::before { content: ''; position: absolute; left: 9px; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, var(--branch) 30%, var(--line)); }
+.research-node { position: relative; margin-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.research-node::before { content: ''; position: absolute; left: -9px; top: 20px; width: 9px; height: 1px; background: color-mix(in srgb, var(--branch) 40%, var(--line)); }
+.research-node-head { display: flex; align-items: center; gap: 7px; }
+.research-node-head > div { flex: 1; min-width: 0; }
+.research-node-head h3 { font-size: 13px; }
+.research-node-head small { display: block; color: var(--muted); font-size: 8px; }
+.research-tier { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--branch) 35%, var(--line)); color: var(--branch); font-size: 9px; flex: 0 0 19px; }
+.research-node p { color: var(--muted); font-size: 9px; line-height: 1.6; }
+.research-node.is-done { border-color: color-mix(in srgb, var(--jade) 35%, var(--line)); opacity: .82; }
+.research-node.is-ready { border-color: color-mix(in srgb, var(--branch) 45%, var(--line)); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--branch) 55%, transparent); }
+.research-node.is-locked { opacity: .58; }
+.research-node.is-poor { opacity: .78; }
+.research-capstone { display: flex; align-items: center; gap: 12px; margin-top: 10px; border-color: color-mix(in srgb, var(--gold) 35%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--gold) 7%, var(--panel)), var(--panel)); }
+.research-capstone-mark { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--gold) 40%, var(--line)); color: var(--gold); font-family: var(--serif); font-size: 20px; flex: 0 0 44px; }
+.research-capstone-main { flex: 1; min-width: 0; }
+.research-capstone-main h3 { font-size: 16px; }
+.research-capstone-main p { color: var(--muted); font-size: 10px; line-height: 1.6; }
+.research-capstone.is-done { opacity: .8; }
+.research-capstone.is-ready { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--gold) 55%, transparent); }
 
 /* --------------------------------------------------------------------------
    Market
@@ -1094,6 +1126,18 @@ button.build-card.type-card { width: 100%; text-align: left; font: inherit; colo
 .detail-section h4 { font-size: 14px; margin-bottom: 9px; }
 .detail-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .detail-section-head span { color: var(--muted); font-size: 9px; }
+.promotion-panel { border-top-color: color-mix(in srgb, var(--gold) 30%, var(--line)); }
+.promotion-next { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.promotion-next small { color: var(--muted); font-size: 9px; line-height: 1.5; }
+.promotion-reqs { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 5px; margin-bottom: 9px; }
+.promotion-req { display: flex; align-items: center; gap: 5px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); color: var(--muted); font-size: 9px; }
+.promotion-req i { font-style: normal; color: var(--faint); }
+.promotion-req b { margin-left: auto; color: var(--ink-soft); font-size: 9px; font-weight: 600; }
+.promotion-req.is-met { border-color: color-mix(in srgb, var(--jade) 28%, var(--line)); }
+.promotion-req.is-met i { color: var(--jade); }
+.promotion-req.is-missing { border-color: color-mix(in srgb, var(--cinnabar) 22%, var(--line)); }
+.promotion-req.is-missing i { color: var(--cinnabar); }
+.promotion-missing { margin-top: 6px; color: var(--cinnabar); font-size: 9px; line-height: 1.6; }
 .successor-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .successor-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
 .successor-head { display: flex; align-items: center; gap: 9px; }
@@ -1303,6 +1347,11 @@ button.build-card.type-card { width: 100%; text-align: left; font: inherit; colo
   .type-status { font-size: 8px; padding: 1px 5px; }
   .disciple-grid { grid-template-columns: 1fr; }
   .study-top { grid-template-columns: 1fr; }
+  .research-tree { grid-template-columns: repeat(4, 220px); }
+  .research-capstone { flex-wrap: wrap; }
+  .promotion-reqs { grid-template-columns: 1fr; }
+  .mission-team-count { flex-wrap: wrap; }
+  .mission-team-count small { width: 100%; margin-left: 0; }
   .build-aside, .alchemy-layout > .panel, .market-layout > aside { display: flex; flex-direction: column; }
   .market-item { grid-template-columns: 34px minmax(0, 1fr) auto; }
   .market-actions { grid-column: 2 / span 2; justify-content: flex-end; }

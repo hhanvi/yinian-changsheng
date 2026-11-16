@@ -354,6 +354,50 @@
     { id: 'sect', name: '宗门' }
   ];
 
+  /* ------------------------------------------------------------------ */
+  /* 门中身份与职务                                                     */
+  /* ------------------------------------------------------------------ */
+  D.RANKS = [
+    {
+      id: 'menial', name: '杂役弟子', glyph: '役', order: 0, color: '#8a7f6a', title: '杂役弟子',
+      desc: '初入山门，做些粗活，攒够资历再谈修行。',
+      promotion: { next: 'outer', realm: 0, layer: 3, aptitude: 2, stones: 20 }
+    },
+    {
+      id: 'outer', name: '外门弟子', glyph: '外', order: 1, color: '#6f8f5e', title: '外门弟子',
+      desc: '山门基层，劳作与巡山都要做。',
+      promotion: { next: 'inner', realm: 0, layer: 6, aptitude: 3, stones: 50 }
+    },
+    {
+      id: 'inner', name: '内门弟子', glyph: '内', order: 2, color: '#4e7c78', title: '内门弟子',
+      desc: '正式弟子，可入静室、丹房与演武场。',
+      promotion: { next: 'core', realm: 1, layer: 0, aptitude: 4, stones: 200 }
+    },
+    {
+      id: 'core', name: '真传弟子', glyph: '真', order: 3, color: '#9b7a41', title: '真传弟子',
+      desc: '宗门核心，可担重任。',
+      promotion: { next: 'elder', realm: 2, layer: 0, aptitude: 4, stones: 500, seat: true }
+    },
+    {
+      id: 'elder', name: '长老', glyph: '长', order: 4, color: '#7b5f84', title: '长老', office: true,
+      desc: '坐镇山门的长辈，席位随宗门品阶增加。'
+    },
+    {
+      id: 'master', name: '掌门', glyph: '掌', order: 5, color: '#a35b4a', title: '掌门', unique: true,
+      desc: '山门之主，任何差事与历练都可担当。'
+    }
+  ];
+  D.RANK_ORDER = D.RANKS.map(function (r) { return r.id; });
+  D.RANK_MAP = {};
+  D.RANKS.forEach(function (r) { D.RANK_MAP[r.id] = r; });
+
+  D.JOB_RANKS = {
+    meditation: 'inner', library: 'outer', alchemy: 'inner', arena: 'inner',
+    farm: 'menial', herb: 'outer', kitchen: 'menial', well: 'menial',
+    storage: 'menial', gate: 'menial', infirmary: 'outer', guest: 'outer',
+    lumberyard: 'menial', quarry: 'menial'
+  };
+
   D.BUILDINGS = {
     gate: {
       id: 'gate', name: '山门', glyph: '门', category: 'sect', unique: true,
@@ -396,6 +440,20 @@
       cost: { wood: 18, stone: 10 }, buildDays: 1, maxLevel: 3, slots: 2,
       aura: 1, fengShui: 2, effect: '产出灵草 · 受季节影响',
       upgradeCost: { wood: 25, stone: 18 }
+    },
+    lumberyard: {
+      id: 'lumberyard', name: '伐木场', glyph: '木', category: 'produce',
+      desc: '靠山吃山。几名弟子轮班伐木，山门才有梁柱可换。',
+      cost: { wood: 10, stone: 5 }, buildDays: 1, maxLevel: 3, slots: 2,
+      aura: 0, fengShui: 1, effect: '产出木材 · 受季节影响',
+      upgradeCost: { wood: 16, stone: 10 }
+    },
+    quarry: {
+      id: 'quarry', name: '采石场', glyph: '岩', category: 'produce',
+      desc: '凿石开山，碎石铺路。石料沉，胜在四时不断。',
+      cost: { wood: 15, stone: 8 }, buildDays: 1, maxLevel: 3, slots: 2,
+      aura: 0, fengShui: 1, effect: '产出石料 · 产量稳定',
+      upgradeCost: { wood: 22, stone: 14 }
     },
     alchemy: {
       id: 'alchemy', name: '丹房', glyph: '丹', category: 'produce',
@@ -469,7 +527,7 @@
     }
   };
 
-  D.BUILD_ORDER = ['meditation', 'dorm', 'farm', 'herb', 'kitchen', 'well', 'alchemy', 'library', 'infirmary', 'arena', 'array', 'shrine', 'guest', 'storage', 'pavilion', 'gate'];
+  D.BUILD_ORDER = ['meditation', 'dorm', 'farm', 'herb', 'lumberyard', 'quarry', 'kitchen', 'well', 'alchemy', 'library', 'infirmary', 'arena', 'array', 'shrine', 'guest', 'storage', 'pavilion', 'gate'];
 
   /* ------------------------------------------------------------------ */
   /* 丹药与丹方                                                         */
@@ -531,42 +589,82 @@
   D.RESEARCH = [
     {
       id: 'lingzhi', name: '灵植术', glyph: '植', cost: 25, requires: [],
-      desc: '灵田与药圃产量 +20%。',
+      branch: '灵植', tier: 1, desc: '灵田与药圃产量 +20%。',
       effect: 'farm +20% · herb +20%'
     },
     {
+      id: 'fengrao', name: '丰饶术', glyph: '丰', cost: 60, requires: ['lingzhi'],
+      branch: '灵植', tier: 2, desc: '灵田与药圃产量再 +30%。',
+      effect: 'farm +30% · herb +30%'
+    },
+    {
+      id: 'yaowang', name: '药王经', glyph: '王', cost: 140, requires: ['fengrao'],
+      branch: '灵植', tier: 3, desc: '药圃产量 +50%，炼丹速度 +10%。',
+      effect: '药圃 +50% · 炼丹 +10%'
+    },
+    {
+      id: 'wanmu', name: '万木归元', glyph: '元', cost: 300, requires: ['yaowang'],
+      branch: '灵植', tier: 4, desc: '灵田、药圃与伐木场产量 +40%。',
+      effect: '生产 +40%'
+    },
+    {
       id: 'dandao', name: '丹道初解', glyph: '丹', cost: 45, requires: [],
-      desc: '解锁聚气丹与破境丹的丹方。',
+      branch: '丹道', tier: 1, desc: '解锁聚气丹与破境丹的丹方。',
       effect: '解锁丹方'
     },
     {
-      id: 'zhenfa', name: '聚灵阵图', glyph: '阵', cost: 60, requires: ['lingzhi'],
-      desc: '解锁聚灵阵，引地脉灵气入山。',
-      effect: '解锁建筑 · 聚灵阵'
-    },
-    {
-      id: 'jianxin', name: '剑心初解', glyph: '剑', cost: 75, requires: ['dandao'],
-      desc: '内门弟子战力 +10%。',
-      effect: '战力 +10%'
-    },
-    {
       id: 'yangshen', name: '养神篇', glyph: '神', cost: 90, requires: ['dandao'],
-      desc: '全体心境上限 +5，突破成功率 +4%。',
+      branch: '丹道', tier: 2, desc: '全体心境上限 +5，突破成功率 +4%。',
       effect: '心境 · 突破'
     },
     {
       id: 'xisui', name: '洗髓真解', glyph: '髓', cost: 130, requires: ['yangshen'],
-      desc: '解锁洗髓丹，可提升弟子资质。',
+      branch: '丹道', tier: 3, desc: '解锁洗髓丹，可提升弟子资质。',
       effect: '解锁丹方'
     },
     {
+      id: 'dayan', name: '大衍丹经', glyph: '衍', cost: 280, requires: ['xisui'],
+      branch: '丹道', tier: 4, desc: '炼丹速度 +15%，宗门修炼速度 +10%。',
+      effect: '丹道大成'
+    },
+    {
+      id: 'zhenfa', name: '聚灵阵图', glyph: '阵', cost: 60, requires: ['lingzhi'],
+      branch: '阵法', tier: 1, desc: '解锁聚灵阵，引地脉灵气入山。',
+      effect: '解锁建筑 · 聚灵阵'
+    },
+    {
       id: 'tianji', name: '天机推演', glyph: '机', cost: 110, requires: ['zhenfa'],
-      desc: '历练收益 +20%，坊市价格 -5%。',
+      branch: '阵法', tier: 2, desc: '历练收益 +20%，坊市价格 -5%。',
       effect: '历练 · 坊市'
     },
     {
-      id: 'dadian', name: '大衍道典', glyph: '衍', cost: 220, requires: ['jianxin', 'yangshen'],
-      desc: '宗门修炼速度 +25%，可窥大道。',
+      id: 'zhouxing', name: '周天星阵', glyph: '星', cost: 240, requires: ['tianji'],
+      branch: '阵法', tier: 3, desc: '宗门灵气 +6，山门气象更盛。',
+      effect: '灵气 +6'
+    },
+    {
+      id: 'hushan', name: '护山大阵', glyph: '护', cost: 480, requires: ['zhouxing'],
+      branch: '阵法', tier: 4, desc: '战斗中全队战力 +15%。',
+      effect: '战斗 +15%'
+    },
+    {
+      id: 'jianxin', name: '剑心初解', glyph: '剑', cost: 75, requires: ['dandao'],
+      branch: '剑道', tier: 1, desc: '内门弟子战力 +10%。',
+      effect: '战力 +10%'
+    },
+    {
+      id: 'yujian', name: '御剑术', glyph: '御', cost: 150, requires: ['jianxin'],
+      branch: '剑道', tier: 2, desc: '弟子战力 +15%。',
+      effect: '战力 +15%'
+    },
+    {
+      id: 'jianyi', name: '剑意通神', glyph: '意', cost: 320, requires: ['yujian'],
+      branch: '剑道', tier: 3, desc: '弟子战力 +25%。',
+      effect: '战力 +25%'
+    },
+    {
+      id: 'dadian', name: '大衍道典', glyph: '典', cost: 500, requires: ['yaowang', 'xisui', 'hushan'],
+      branch: '道典', tier: 5, desc: '宗门修炼速度 +25%，可窥大道。',
       effect: '修炼 +25%'
     }
   ];
@@ -577,38 +675,73 @@
   D.MISSIONS = [
     {
       id: 'backhill', name: '青崖后山', glyph: '崖', danger: 0, days: 2,
-      minRealm: 0, minPower: 0, allowOuter: true, color: '#6f8f5e',
+      minRealm: 0, minPower: 0, minRank: 'outer', color: '#6f8f5e',
       desc: '砍柴、采药、巡山。外门弟子也能去，收益不高，胜在安稳。',
       flavor: '山道熟悉，溪水声一路伴着。',
       rewards: { food: [6, 12], wood: [5, 10], herbs: [1, 3], stones: [0, 12], renown: [0, 1] }
     },
     {
+      id: 'qingxi', name: '青溪涧', glyph: '溪', danger: 1, days: 2,
+      minRealm: 0, minPower: 20, minRank: 'outer', color: '#6f9a8a',
+      desc: '溪水从石缝里淌出来，两岸生着低阶灵草，偶有野兽来饮水。',
+      flavor: '水声清亮，石头上覆着一层薄薄的青苔。',
+      rewards: { food: [4, 9], wood: [4, 8], herbs: [2, 4], stones: [2, 10], renown: [0, 2] }
+    },
+    {
       id: 'luoxia', name: '落霞山', glyph: '霞', danger: 1, days: 3,
-      minRealm: 0, minPower: 40, allowOuter: false, color: '#b17a4e',
+      minRealm: 0, minPower: 40, minRank: 'inner', color: '#b17a4e',
       desc: '晚霞栖于群峰，山中有灵草，也有饿狼与散修。',
       flavor: '山道湿滑，林间偶有鸟鸣。',
       rewards: { food: [0, 4], wood: [0, 5], herbs: [2, 5], stones: [10, 35], renown: [1, 3] }
     },
     {
+      id: 'guyuan', name: '古猿峡', glyph: '猿', danger: 2, days: 4,
+      minRealm: 1, minPower: 90, minRank: 'inner', color: '#8a7450',
+      desc: '峡深林密，古猿盘踞。崖上有老木，谷底有青石。',
+      flavor: '猿啼从崖顶落下来，一声接一声。',
+      rewards: { wood: [8, 16], stone: [6, 14], herbs: [2, 5], stones: [15, 40], renown: [1, 3] }
+    },
+    {
       id: 'yunmeng', name: '云梦泽', glyph: '泽', danger: 2, days: 4,
-      minRealm: 1, minPower: 110, allowOuter: false, color: '#5f8790',
+      minRealm: 1, minPower: 110, minRank: 'inner', color: '#5f8790',
       desc: '八百里水泽，雾起时连天光都透不下来。',
       flavor: '水面浮着一层薄雾，远处有渔火明灭。',
       rewards: { food: [2, 8], herbs: [4, 8], stones: [30, 70], renown: [2, 5] }
     },
     {
+      id: 'moyuan', name: '墨渊', glyph: '墨', danger: 3, days: 5,
+      minRealm: 2, minPower: 240, minRank: 'core', color: '#5b526b',
+      desc: '渊水如墨，水下有古修洞府，也有不见天日的凶物。',
+      flavor: '水面黑得发亮，倒影里的山门像另一个世界。',
+      rewards: { herbs: [6, 12], stones: [50, 110], renown: [3, 6], pills: ['ningshen'] }
+    },
+    {
       id: 'wanyao', name: '万妖岭', glyph: '妖', danger: 3, days: 5,
-      minRealm: 2, minPower: 280, allowOuter: false, color: '#8c5545',
+      minRealm: 2, minPower: 280, minRank: 'core', color: '#8c5545',
       desc: '妖气冲天，人族修士若无金丹修为，入岭便是死路。',
       flavor: '风中带着野兽的气味，远处虎啸震得胸口发闷。',
       rewards: { herbs: [5, 10], stones: [60, 140], renown: [4, 8], pills: ['pojing'] }
     },
     {
+      id: 'xinghai', name: '星海遗迹', glyph: '星', danger: 4, days: 6,
+      minRealm: 3, minPower: 500, minRank: 'core', color: '#5f6f9a',
+      desc: '陨星坠地留下的废墟，夜里石缝中会亮起细碎的星火。',
+      flavor: '脚下的碎石泛着冷光，像一片倒悬的星空。',
+      rewards: { herbs: [5, 10], stones: [100, 220], renown: [5, 9], pills: ['pojing'] }
+    },
+    {
       id: 'jiuyou', name: '九幽墟', glyph: '幽', danger: 4, days: 7,
-      minRealm: 3, minPower: 650, allowOuter: false, color: '#5b526b',
+      minRealm: 3, minPower: 650, minRank: 'elder', color: '#5b526b',
       desc: '上古大战留下的废墟，阴气凝而不散，机缘与凶险并存。',
       flavor: '天色永远是灰的，脚下的土地冷得像一块铁。',
       rewards: { herbs: [8, 16], stones: [120, 260], renown: [7, 12], pills: ['xisui', 'pojing'] }
+    },
+    {
+      id: 'tianwai', name: '天外墟', glyph: '墟', danger: 5, days: 8,
+      minRealm: 4, minPower: 900, minRank: 'elder', color: '#7b5f84',
+      desc: '云海尽头的一方残界，空间裂隙时开时合，非长老不可轻入。',
+      flavor: '风从裂隙里吹出来，带着不属于此界的寒意。',
+      rewards: { herbs: [10, 20], stones: [200, 420], renown: [10, 18], pills: ['xisui', 'ningshen'] }
     }
   ];
 
@@ -631,7 +764,7 @@
   D.SECT_SUFFIXES = ['宗', '门', '观', '谷', '山', '楼', '斋'];
 
   D.TIPS = [
-    '外门弟子负责劳作，内门弟子专心修炼。资历够了，外门也可晋升内门。',
+    '门中弟子从杂役做起，依次晋升外门、内门、真传；真传中的佼佼者可被立为长老。',
     '灵田与药圃受季节影响。冬天之前，记得多囤一些粮食。',
     '静室、聚灵阵与风水都会影响修炼速度。建筑不是越多越好，布局也重要。',
     '藏经阁产出悟道，可用于参研。丹房能把灵草炼成丹药。',
