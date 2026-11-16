@@ -138,6 +138,9 @@
   E.isMaster = function (state, d) {
     return !!(state && d && state.playerId && d.id === state.playerId && !d.dead);
   };
+  E.isAscended = function (d) {
+    return !!(d && !d.dead && (d.ascended || d.realm >= 9));
+  };
   E.successors = function (state) {
     return E.aliveDisciples(state).filter(function (d) {
       return d.id !== state.playerId;
@@ -778,6 +781,11 @@
 
   function updateDisciple(state, d) {
     if (d.dead || d.missionId) return;
+    if (E.isAscended(d)) {
+      d.state = 'ascended';
+      d.stateLabel = '已飞升';
+      return;
+    }
     var mode = determineMode(state, d);
     var fed = state._fed;
     var housing = E.housing(state);
@@ -938,8 +946,17 @@
           d.layer = 0;
           d.exp = 0;
           d.lifespan = E.lifespanOf(d);
-          state.ending = { type: 'ascension', title: '飞升', text: D.STORY.ascension + '\\n\\n' + d.name + '于青历' + E.getDate(state).year + '年飞升。', day: state.day, discipleId: d.id };
-          E.log(state, d.name + '渡过天劫，白日飞升！', 'good');
+          d.ascended = true;
+          if (d.job) {
+            var oldBuilding = E.buildingById(state, d.job);
+            if (oldBuilding) oldBuilding.workers = oldBuilding.workers.filter(function (id) { return id !== d.id; });
+          }
+          d.job = null;
+          d.jobMode = 'manual';
+          d.preferredJob = null;
+          d.state = 'ascended';
+          d.stateLabel = '已飞升';
+          E.log(state, d.name + '渡过天劫，白日飞升！从此不再领差事，仍可外派历练。', 'good');
           return { ok: true, major: true, ascended: true };
         }
         E.log(state, d.name + '破境成功，踏入' + D.REALMS[d.realm].name + '！', 'good');
@@ -998,7 +1015,7 @@
 
     // 自动安排空闲弟子：按灵根、性情与空缺择最合适的差事
     E.aliveDisciples(state).forEach(function (d) {
-      if (d.missionId || d.job || d.jobMode === 'manual') return;
+      if (d.missionId || d.job || d.jobMode === 'manual' || E.isAscended(d)) return;
       E.autoAssign(state, d.id);
     });
 
@@ -1185,6 +1202,7 @@
     var auto = !!opts.auto;
     var d = E.discipleById(state, discipleId);
     if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
+    if (E.isAscended(d)) return { ok: false, msg: '已飞升，不再领差事。' };
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
     var b = null, def = null;
     if (buildingId) {
@@ -1218,7 +1236,7 @@
   };
 
   E.eligibleJobs = function (state, d) {
-    if (!d || d.dead) return [];
+    if (!d || d.dead || E.isAscended(d)) return [];
     return state.buildings.filter(function (b) {
       var def = E.def(b);
       if (!def || !def.slots || b.construction > 0) return false;
@@ -1229,7 +1247,7 @@
 
   /* 给弟子挑一份最合适的差事：内门优先静室，外门按灵根与空缺补位。 */
   E.recommendedJob = function (state, d) {
-    if (!d || d.dead) return null;
+    if (!d || d.dead || E.isAscended(d)) return null;
     var candidates = state.buildings.filter(function (b) {
       var def = E.def(b);
       if (!def || !def.slots || b.construction > 0) return false;
@@ -1264,6 +1282,7 @@
   E.autoAssign = function (state, discipleId) {
     var d = E.discipleById(state, discipleId);
     if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
+    if (E.isAscended(d)) return { ok: false, msg: '已飞升，不再领差事。' };
     if (d.missionId) return { ok: false, msg: '弟子正在外历练。' };
     var b = E.recommendedJob(state, d);
     if (!b) return { ok: false, msg: '山中暂无合适差事。' };
@@ -1281,7 +1300,7 @@
     var room = E.slotsOf(b) - b.workers.length;
     if (room <= 0) return { ok: false, msg: '此处已满员。' };
     var pool = E.aliveDisciples(state).filter(function (d) {
-      return !d.missionId && !d.job && d.jobMode !== 'manual' && d.id !== b.workers[0] && canWorkAt(b, d);
+      return !d.missionId && !d.job && d.jobMode !== 'manual' && !E.isAscended(d) && d.id !== b.workers[0] && canWorkAt(b, d);
     }).sort(function (a, c) {
       var sa = E.aptitude(a) + (a.traits || []).length * 0.2;
       var sc = E.aptitude(c) + (c.traits || []).length * 0.2;
@@ -1445,7 +1464,7 @@
       if (!d || d.dead) return { ok: false, msg: '弟子不在山中。' };
       if (d.missionId) return { ok: false, msg: '该弟子已经在外。' };
       if (d.health < 30) return { ok: false, msg: d.name + '伤势未愈，不宜远行。' };
-      if (!m.allowOuter && d.role !== 'inner') return { ok: false, msg: '此地凶险，外门弟子去不得。' };
+      if (!m.allowOuter && d.role !== 'inner' && !E.isAscended(d)) return { ok: false, msg: '此地凶险，外门弟子去不得。' };
       if (d.realm < (m.minRealm || 0)) return { ok: false, msg: d.name + '境界不足。' };
       team.push(d);
     }
@@ -1571,8 +1590,13 @@
       d.injury = clamp(d.injury + (success ? randInt(state, 2, 10) : randInt(state, 12, 28)), 0, 100);
       d.health = clamp(d.health - (success ? randInt(state, 0, 5) : randInt(state, 8, 20)), 1, 100);
       d.missionId = null;
-      d.state = 'idle';
-      d.stateLabel = '归来';
+      if (E.isAscended(d)) {
+        d.state = 'ascended';
+        d.stateLabel = '已飞升';
+      } else {
+        d.state = 'idle';
+        d.stateLabel = '归来';
+      }
       d.mood = clamp(d.mood + (success ? 6 : -8), 0, 100);
       if (d.health <= 1 && region.danger >= 4 && chance(state, 0.08)) {
         killDisciple(state, d, d.name + '在' + region.name + '重伤不治，没能回到山门。');
@@ -1580,7 +1604,7 @@
     });
     if (order) order.nextTryDay = state.day + 2;
     team.forEach(function (d) {
-      if (d.dead) return;
+      if (d.dead || E.isAscended(d)) return;
       if (d.jobMode === 'manual' && d.preferredJob) {
         var preferred = E.buildingById(state, d.preferredJob);
         if (preferred && E.assign(state, d.id, preferred.id).ok) return;
@@ -2001,6 +2025,20 @@
     state.nextMissionOrderId = Number(state.nextMissionOrderId) || (state.missionOrders.length + 1);
     state.weather = state.weather || 'clear';
     state.ending = state.ending || null;
+    if (state.ending && state.ending.type === 'ascension') {
+      var ascended = state.ending.discipleId
+        ? state.disciples.find(function (d) { return d.id === state.ending.discipleId; })
+        : null;
+      if (!ascended) ascended = state.disciples.find(function (d) { return d.realm >= 9 && !d.dead; });
+      if (!ascended) ascended = state.disciples.find(function (d) { return !d.dead; });
+      if (ascended) {
+        ascended.ascended = true;
+        ascended.realm = 9;
+        ascended.layer = 0;
+        ascended.exp = 0;
+      }
+      state.ending = null;
+    }
     state.pendingEvent = state.pendingEvent || null;
     state.pendingResult = state.pendingResult || null;
     state.pendingReport = state.pendingReport || null;
@@ -2021,6 +2059,23 @@
       d.jobMode = d.jobMode === 'manual' ? 'manual' : 'auto';
       if (d.preferredJob === undefined) d.preferredJob = d.jobMode === 'manual' ? d.job : null;
       d.dead = !!d.dead;
+      d.ascended = !!d.ascended || (!d.dead && d.realm >= 9);
+      if (d.ascended) {
+        d.realm = 9;
+        d.layer = 0;
+        d.job = null;
+        d.jobMode = 'manual';
+        d.preferredJob = null;
+        if (!d.missionId) {
+          d.state = 'ascended';
+          d.stateLabel = '已飞升';
+        }
+      }
+    });
+    var ascendedIds = {};
+    state.disciples.forEach(function (d) { if (d.ascended) ascendedIds[d.id] = true; });
+    state.buildings.forEach(function (b) {
+      b.workers = b.workers.filter(function (id) { return !ascendedIds[id]; });
     });
     state.missionOrders.forEach(function (order) {
       order.discipleIds = Array.isArray(order.discipleIds) ? order.discipleIds : [];

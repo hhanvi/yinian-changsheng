@@ -22,6 +22,7 @@
   --shadow-soft: 0 3px 12px rgba(39, 70, 53, .06);
   --nav-bg: rgba(245, 246, 237, .96);
   --hero-art: url('../assets/qingya-panorama.jpg');
+  --sect-map-art: url('../assets/sect-map.jpg');
 }
 [data-theme="night"] {
   --bg: #142822; --bg-deep: #0f211d; --panel: #1d332b;
@@ -93,6 +94,46 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .building { filter: drop-shadow(0 3px 2px #24432f38); }
 .mountain-cranes { animation: birds 12s ease-in-out infinite alternate; pointer-events: none; }
 .side-column { gap: 14px; }
+
+/* 山门舆图：背景只负责山势，建筑标记按真实坐标叠加。 */
+.sect-map-panel { margin-bottom: 18px; overflow: hidden; }
+.sect-map-panel .panel-head { align-items: flex-end; }
+.sect-map-panel .panel-head h3 { margin-top: 2px; }
+.sect-map-actions { display: flex; align-items: center; gap: 10px; }
+.sect-map-count { color: var(--muted); font-size: 11px; }
+.sect-map { position: relative; margin: 0 16px 16px; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--sect-map-art) center/cover no-repeat; }
+.sect-map::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(20, 45, 35, .04), transparent 28%, transparent 70%, rgba(20, 45, 35, .16)), radial-gradient(ellipse at center, transparent 48%, rgba(25, 48, 38, .18)); }
+.map-building { position: absolute; display: flex; flex-direction: column; align-items: center; width: 58px; transform: translate(-50%, -82%); pointer-events: none; filter: drop-shadow(0 3px 2px rgba(25, 45, 32, .24)); }
+.map-building svg { display: block; width: 100%; height: auto; overflow: visible; }
+.map-building-label { max-width: 82px; margin-top: -1px; padding: 1px 4px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent); border-radius: 2px; background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--ink-soft); font-size: 8px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.map-building.is-building { opacity: .82; }
+.map-building.is-building .map-building-label { color: var(--gold); }
+.sect-map-caption { position: absolute; left: 10px; bottom: 8px; padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--line-strong) 60%, transparent); border-radius: 2px; background: color-mix(in srgb, var(--panel) 78%, transparent); color: var(--muted); font-size: 9px; letter-spacing: .08em; }
+[data-theme="night"] .sect-map { filter: brightness(.8) saturate(.82); }
+[data-theme="night"] .map-building { filter: drop-shadow(0 3px 2px rgba(0, 0, 0, .3)); }
+
+/* 建筑页：已建成与新建分开。 */
+.built-section { margin-bottom: 18px; }
+.built-section-head, .build-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.built-section-head > div, .build-section-head > div { display: flex; align-items: baseline; gap: 8px; }
+.built-section-head h3, .build-section-head h3 { font-size: 17px; font-weight: 500; }
+.built-section-head span, .build-section-head span { color: var(--muted); font-size: 10px; }
+.built-section-head small { color: var(--muted); font-size: 10px; }
+.built-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 8px; }
+.built-card { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); text-align: left; cursor: pointer; transition: border-color .15s, transform .15s; }
+.built-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.built-card.is-building { opacity: .72; }
+.built-card-glyph { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--line-strong); border-radius: 2px; background: var(--panel-2); color: var(--gold); font: 17px var(--serif); }
+.built-card-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.built-card-main b { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.built-card-main small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.built-card-arrow { color: var(--faint); font-size: 14px; }
+.built-empty { padding: 18px; border: 1px dashed var(--line-strong); border-radius: 5px; color: var(--muted); font-size: 12px; text-align: center; }
+.build-section-head { margin-bottom: 0; }
+
+.badge-ascended { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); background: color-mix(in srgb, var(--gold) 10%, var(--panel)); }
+.job-quick-static.is-ascended b { color: var(--gold); }
+.ascended-note { padding: 8px 10px; border-left: 2px solid var(--gold); background: color-mix(in srgb, var(--gold) 7%, var(--panel)); color: var(--muted); font-size: 11px; line-height: 1.8; }
 .sect-status .stat-grid { gap: 6px; }
 .stat { padding: 9px; border-radius: 5px; background: var(--panel-2); }
 .stat b { font-size: 21px; font-weight: 500; }
@@ -153,9 +194,22 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
   .landing-copy { max-width: 480px; }
 }
 @media (max-width: 640px) {
-  :root { --hero-art: url('../assets/qingya-panorama-mobile.jpg'); }
+  :root { --hero-art: url('../assets/qingya-panorama-mobile.jpg'); --sect-map-art: url('../assets/sect-map-mobile.jpg'); }
   .creation { background-attachment: scroll; }
   .landing::before { background-position: center top; }
+  .sect-map { aspect-ratio: 4 / 5; margin: 0 10px 10px; }
+  .sect-map-actions { gap: 6px; }
+  .sect-map-count { font-size: 9px; }
+  .map-building { width: 34px; }
+  .map-building-label { max-width: 60px; font-size: 7px; }
+  .sect-map-caption { left: 6px; bottom: 5px; font-size: 7px; }
+  .built-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .built-card { gap: 6px; padding: 7px; }
+  .built-card-glyph { flex-basis: 26px; width: 26px; height: 26px; font-size: 14px; }
+  .built-card-main b { font-size: 11px; }
+  .built-card-main small { font-size: 8px; }
+  .built-section-head { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .built-section-head small { font-size: 9px; }
   .landing::after { background: linear-gradient(0deg, #edf2e5 0, #edf2e5f2 38%, #edf2e59e 68%, #edf2e51f 100%); }
   .landing-inner { align-items: flex-end; padding: 150px 24px 32px; min-height: 100svh; }
   .landing-copy { width: 100%; padding-bottom: 0; }

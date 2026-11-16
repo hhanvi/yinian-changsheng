@@ -75,7 +75,9 @@
   }
   function rootOf(d) { return D.ROOTS[d.root] || D.ROOTS.water; }
   function roleBadge(d) {
-    if (d.id === UI.game.playerId) return '<span class="badge badge-player">掌门</span>';
+    var ascended = E.isAscended(d) ? '<span class="badge badge-ascended">飞升</span>' : '';
+    if (d.id === UI.game.playerId) return '<span class="badge badge-player">掌门</span>' + ascended;
+    if (E.isAscended(d)) return ascended;
     return d.role === 'inner'
       ? '<span class="badge badge-inner">内门</span>'
       : '<span class="badge badge-outer">外门</span>';
@@ -835,6 +837,22 @@
     }).join('') + '</div>', { key: 'journey', class: 'journey-modal' });
   }
 
+  function sectMap() {
+    var built = UI.game.buildings.slice().sort(function (a, b) { return (a.y + a.x) - (b.y + b.x); });
+    var markers = built.map(function (b) {
+      var def = E.def(b);
+      var left = 16 + (b.x / 12) * 68;
+      var top = 30 + (b.y / 8) * 46;
+      var z = 20 + Math.round(b.y * 10 + b.x);
+      return '<div class="map-building' + (b.construction > 0 ? ' is-building' : '') + '" style="left:' + left.toFixed(2) + '%;top:' + top.toFixed(2) + '%;z-index:' + z + '">' +
+        '<svg viewBox="-38 -50 76 68" aria-hidden="true">' + buildingGroup(b, { noIso: true, decorative: true, hideLevel: true }) + '</svg>' +
+        '<span class="map-building-label">' + h(def.name) + (b.construction > 0 ? ' · 营造中' : ' · Lv.' + b.level) + '</span></div>';
+    }).join('');
+    var done = built.filter(function (b) { return b.construction <= 0; }).length;
+    return '<section class="panel sect-map-panel"><div class="panel-head"><div><p class="eyebrow">SECT GROUNDS</p><h3>山门舆图</h3></div><div class="sect-map-actions"><span class="sect-map-count">已建成 ' + done + ' 座</span><button class="text-btn" data-action="nav" data-tab="build">建筑 ›</button></div></div>' +
+      '<div class="sect-map" role="img" aria-label="山门建筑分布图">' + markers + '<div class="sect-map-caption">位置由山势自动安排</div></div></section>';
+  }
+
   function renderSect() {
     if (!UI.game) return;
     var st = stats();
@@ -854,6 +872,7 @@
     var topDisciples = E.aliveDisciples(UI.game).sort(function (a, b) { return E.power(b, UI.game) - E.power(a, UI.game); }).slice(0, 3);
 
     view.innerHTML = '<section class="scenic-header" aria-label="青崖山水"><div class="scenic-copy"><span class="scenic-kicker">青崖山 · ' + d.season.full + '</span><h2>山有归处，心向长生。</h2><p>' + h(d.season.desc) + '</p><button class="scenic-link" data-action="open-journey">展开宗门长卷 <span>七章仙途 ›</span></button></div><div class="scenic-seal" aria-hidden="true">青崖<br>山居</div></section><div class="sect-layout"><div class="mountain-column">' +
+      sectMap() +
       '<div class="panel sect-status">' +
       '<div class="panel-head"><h3>宗门气象</h3><span class="panel-mark">' + st.fsGrade + '</span></div>' +
       '<div class="grade-line"><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span><span>' + h(st.grade.desc) + '</span></div>' +
@@ -970,6 +989,7 @@
 
   function jobSelectHtml(d, extraClass, label) {
     if (d.missionId) return '<span class="job-quick job-quick-static ' + (extraClass || '') + '"><span>' + (label || '差事') + '</span><b>在外历练</b></span>';
+    if (E.isAscended(d)) return '<span class="job-quick job-quick-static is-ascended ' + (extraClass || '') + '"><span>' + (label || '差事') + '</span><b>已飞升 · 可外派历练</b></span>';
     var options = '<option value="">待命</option><option value="auto">自动安排</option>';
     jobChoices(d).forEach(function (b) {
       var def = E.def(b);
@@ -987,8 +1007,8 @@
     var job = d.job ? E.buildingById(UI.game, d.job) : null;
     var jobName = d.missionId ? '在外历练' : job ? E.def(job).name : '闲居';
     return '<article class="disciple-card ' + (d.id === UI.game.playerId ? 'is-player' : '') + '">' +
-      '<div class="dc-head">' + avatarSvg(d, 58) + '<div class="dc-title"><div><h3>' + h(d.name) + '</h3><span class="dc-role">' + roleBadge(d) + '<span class="realm-text">' + h(stage(d)) + '</span></span></div><small>' + h(d.origin) + ' · ' + d.age + '岁</small></div></div>' +
-      '<div class="dc-cult"><div class="dc-cult-head"><span>' + (isBottleneck ? '瓶颈' : '修为') + '</span><b>' + Math.floor(d.exp) + ' / ' + need + '</b></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') + '</div>' +
+      '<div class="dc-head">' + avatarSvg(d, 58) + '<div class="dc-title"><div><h3>' + h(d.name) + '</h3><span class="dc-role">' + roleBadge(d) + '<span class="realm-text">' + h(E.isAscended(d) ? '超脱' : stage(d)) + '</span></span></div><small>' + h(d.origin) + ' · ' + d.age + '岁</small></div></div>' +
+      (E.isAscended(d) ? '' : '<div class="dc-cult"><div class="dc-cult-head"><span>' + (isBottleneck ? '瓶颈' : '修为') + '</span><b>' + Math.floor(d.exp) + ' / ' + need + '</b></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') + '</div>') +
       '<div class="dc-meta">' + jobSelectHtml(d, 'dc-job') + '<span class="power-chip">战力 ' + fmt(E.power(d, UI.game)) + '</span></div>' +
       '<div class="dc-traits">' + (d.traits || []).slice(0, 3).map(function (t) { return '<span class="mini-chip">' + h(D.TRAITS[t] ? D.TRAITS[t].name : t) + '</span>'; }).join('') + '</div>' +
       '<div class="dc-actions"><button class="btn btn-ghost btn-sm" data-action="open-disciple" data-id="' + d.id + '">详情</button>' +
@@ -1009,12 +1029,12 @@
       return '<button class="pill-use" data-action="use-pill" data-id="' + d.id + '" data-pill="' + p + '">' + seal(pill.glyph) + '<span><b>' + h(pill.name) + '</b><small>' + h(pill.desc) + '</small></span><em>×' + UI.game.pills[p] + '</em></button>';
     }).join('');
     var promoteReq = d.role === 'outer' && d.realm === 0 && d.layer >= 2 && E.aptitude(d) >= 2;
-    var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + (d.id === UI.game.playerId ? 'SECT MASTER' : d.role === 'inner' ? 'INNER DISCIPLE' : 'OUTER DISCIPLE') + '</p><h2>' + h(d.name) + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
+    var content = '<div class="modal-head detail-head"><div class="detail-hero">' + avatarSvg(d, 92) + '<div><p class="eyebrow">' + (d.id === UI.game.playerId ? 'SECT MASTER' : E.isAscended(d) ? 'ASCENDED' : d.role === 'inner' ? 'INNER DISCIPLE' : 'OUTER DISCIPLE') + '</p><h2>' + h(d.name) + '</h2><div class="detail-sub">' + roleBadge(d) + '<span>' + h(E.isAscended(d) ? '超脱' : stage(d)) + '</span><span>' + d.age + ' / ' + E.lifespanOf(d) + ' 岁</span><span>' + h(d.origin) + '</span></div></div></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
       '<div class="detail-body">' +
       '<div class="detail-bio">' + h(d.bio || '山中岁月长，来日方长。') + '</div>' +
       (UI.settings.autoPause ? '<div class="pause-note">时间已暂停 · 可安心安排差事</div>' : '') +
       '<div class="detail-cols">' +
-      '<div class="detail-col"><h4>修行</h4><div class="detail-big">' + h(stage(d)) + '<small>' + Math.floor(d.exp) + ' / ' + pr.need + ' 修为</small></div>' + bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade') +
+      '<div class="detail-col"><h4>修行</h4><div class="detail-big">' + h(E.isAscended(d) ? '超脱' : stage(d)) + (E.isAscended(d) ? '<small>道成之后，仍可外派历练</small>' : '<small>' + Math.floor(d.exp) + ' / ' + pr.need + ' 修为</small>') + '</div>' + (E.isAscended(d) ? '' : bar(pr.pct, isBottleneck ? 'bar-gold' : 'bar-jade')) +
       '<div class="stat-pills"><span>资质 <b>' + E.aptitude(d) + '</b></span><span>战力 <b>' + fmt(E.power(d, UI.game)) + '</b></span><span>灵根 <b>' + h(rootOf(d).name) + '</b></span><span title="' + h(E.techniqueOf(d).desc) + '">功法 <b>' + h(E.techniqueOf(d).name) + '</b></span></div>' +
       '<p class="tech-note">' + h(E.techniqueOf(d).desc) + '</p>' +
       (isBottleneck ? '<div class="bottleneck-box">' + seal('破') + '<div><b>已至瓶颈</b><p>突破成功率 ' + Math.round(E.breakChance(d, UI.game) * 100) + '%</p></div></div><div class="detail-actions"><button class="btn btn-primary" data-action="breakthrough" data-id="' + d.id + '">尝试突破</button>' + ((UI.game.pills.pojing || 0) > 0 ? '<button class="btn btn-jade" data-action="breakthrough-pill" data-id="' + d.id + '">服破境丹突破</button>' : '') + '</div>' : '') +
@@ -1024,8 +1044,8 @@
       '<div class="trait-row">' + (d.traits || []).map(function (t) { var tr = D.TRAITS[t]; return tr ? '<span class="trait-chip ' + (tr.rarity === '天' ? 'trait-heaven' : tr.rarity === '地' ? 'trait-earth' : '') + '" title="' + h(tr.desc) + '">' + h(tr.name) + '</span>' : ''; }).join('') + '</div>' +
       '</div></div>' +
       relationSection(d) +
-      '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (d.missionId ? '在外历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
-      (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job', '安排') +
+      '<div class="detail-section"><div class="detail-section-head"><h4>差事</h4><span>' + (d.missionId ? '在外历练' : E.isAscended(d) ? '已飞升 · 可外派历练' : job ? '当前：' + h(E.def(job).name) : '闲居') + '</span></div>' +
+      (d.missionId ? '<p class="muted">弟子正在外，归来后才可另行安排。</p>' : E.isAscended(d) ? '<p class="ascended-note">已飞升，不再领山中差事；仍可在外派历练中随队出行。</p>' : '<div class="job-quick-row">' + jobSelectHtml(d, 'detail-job', '安排') +
         '<button class="btn btn-jade btn-sm" data-action="auto-assign" data-id="' + d.id + '">自动安排</button>' +
         (d.job ? '<button class="btn btn-ghost btn-sm" data-action="assign" data-id="' + d.id + '" data-building="">解除差事</button>' : '') + '</div>' +
         '<p class="job-hint">选好差事即刻生效；安排时山门时间会自动暂停。</p>') +
@@ -1050,7 +1070,7 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* 营造视图                                                           */
+  /* 建筑视图                                                           */
   /* ------------------------------------------------------------------ */
   function renderBuild() {
     var cats = D.BUILD_CATEGORIES;
@@ -1059,17 +1079,23 @@
       return true;
     });
     var st = stats();
+    var built = UI.game.buildings.slice().sort(function (a, b) { return (a.y + a.x) - (b.y + b.x); });
+    var done = built.filter(function (b) { return b.construction <= 0; }).length;
+    var builtHtml = built.length ? '<div class="built-grid">' + built.map(function (b) {
+      var def = E.def(b);
+      var constructing = b.construction > 0;
+      return '<button class="built-card' + (constructing ? ' is-building' : '') + '" data-action="open-building" data-id="' + b.id + '">' +
+        '<span class="built-card-glyph">' + h(def.glyph) + '</span>' +
+        '<span class="built-card-main"><b>' + h(def.name) + '</b><small>Lv.' + b.level + ' · ' + (constructing ? '营造中 ' + b.construction + ' 日' : b.workers.length + ' 人当值') + '</small></span>' +
+        '<span class="built-card-arrow">›</span></button>';
+    }).join('') + '</div>' : '<div class="built-empty">山中还没有建筑，从下方选一张图样开始。</div>';
     document.getElementById('view').innerHTML = '<div class="view-page">' +
-      '<div class="view-head"><div><p class="eyebrow">BUILD &amp; ARRANGE</p><h2>营造山门</h2><p>选好图样，山门会依山势自动择地开工。木石有价，风水无形。</p></div><div class="view-head-actions"><span class="capacity-note">空地 ' + countBuildable() + ' · 风水 ' + st.fengShui + ' ' + st.fsGrade + '</span></div></div>' +
-      '<div class="build-layout"><section><div class="cat-tabs">' + cats.map(function (c) {
+      '<div class="view-head"><div><p class="eyebrow">SECT BUILDINGS</p><h2>山门建筑</h2><p>已建成的屋舍都在这里；新建筑会依山势自动择地开工。</p></div><div class="view-head-actions"><span class="capacity-note">已建成 ' + done + ' 座 · 空地 ' + countBuildable() + ' · 风水 ' + st.fengShui + ' ' + st.fsGrade + '</span></div></div>' +
+      '<section class="built-section"><div class="built-section-head"><div><h3>已建成</h3><span>' + done + ' 座</span></div><small>点击查看当值弟子、升级或拆除。</small></div>' + builtHtml + '</section>' +
+      '<div class="build-layout"><section><div class="build-section-head"><div><h3>建造新建筑</h3><span>选图样，自动择地</span></div></div><div class="cat-tabs">' + cats.map(function (c) {
         return '<button class="filter-chip ' + (UI.buildCat === c.id ? 'active' : '') + '" data-action="build-cat" data-value="' + c.id + '">' + c.name + '</button>';
       }).join('') + '</div><div class="build-grid">' + list.map(buildingCatalogCard).join('') + '</div></section>' +
-      '<aside class="build-aside"><div class="panel"><div class="panel-head"><h3>山中营造</h3><span class="panel-mark">' + UI.game.buildings.length + '</span></div>' +
-      UI.game.buildings.slice().sort(function (a, b) { return (a.y + a.x) - (b.y + b.x); }).map(function (b) {
-        var def = E.def(b);
-        return '<button class="built-row" data-action="open-building" data-id="' + b.id + '"><span class="built-glyph">' + def.glyph + '</span><span><b>' + h(def.name) + '</b><small>Lv.' + b.level + (b.construction > 0 ? ' · 营造中' : ' · ' + b.workers.length + ' 人') + '</small></span><em>' + (b.construction > 0 ? '…' : '›') + '</em></button>';
-      }).join('') + '</div>' +
-      '<div class="panel build-note"><div class="panel-head"><h3>风水小记</h3><span class="panel-mark">诀</span></div><p>' + h(st.grade.desc) + '</p><ul><li>静室靠近聚灵阵，灵气更盛。</li><li>丹房靠近药圃，取药更顺手。</li><li>弟子居靠近灵井，起居更清爽。</li><li>灵田与药圃受季节影响，冬天前要囤粮。</li></ul></div></aside></div></div>';
+      '<aside class="build-aside"><div class="panel build-note"><div class="panel-head"><h3>风水小记</h3><span class="panel-mark">诀</span></div><p>' + h(st.grade.desc) + '</p><ul><li>静室靠近聚灵阵，灵气更盛。</li><li>丹房靠近药圃，取药更顺手。</li><li>弟子居靠近灵井，起居更清爽。</li><li>灵田与药圃受季节影响，冬天前要囤粮。</li></ul></div></aside></div></div>';
   }
 
   function buildingCatalogCard(def) {
@@ -1085,7 +1111,7 @@
       '<p class="build-desc">' + h(def.desc) + '</p>' +
       '<div class="build-effect">' + h(def.effect) + '</div>' +
       '<div class="cost-row">' + cost + '</div>' +
-      '<button class="btn ' + (locked || uniqueBlocked || !can ? 'btn-ghost' : 'btn-primary') + ' btn-sm btn-block" data-action="select-build" data-type="' + def.id + '" ' + (locked || uniqueBlocked || !can ? 'disabled' : '') + '>' + (locked ? '需参研' : uniqueBlocked ? '已建成' : !can ? '材料不足' : '择地营造') + '</button>' +
+      '<button class="btn ' + (locked || uniqueBlocked || !can ? 'btn-ghost' : 'btn-primary') + ' btn-sm btn-block" data-action="select-build" data-type="' + def.id + '" ' + (locked || uniqueBlocked || !can ? 'disabled' : '') + '>' + (locked ? '需参研' : uniqueBlocked ? '已建成' : !can ? '材料不足' : '建造') + '</button>' +
       '</article>';
   }
 
@@ -1138,7 +1164,7 @@
 
   function alchemyView() {
     var buildings = UI.game.buildings.filter(function (b) { return b.type === 'alchemy'; });
-    if (!buildings.length) return '<div class="empty-state">' + seal('丹') + '<h3>还没有丹房</h3><p>去营造一座丹房，把药圃里的灵草炼成丹药。</p><button class="btn btn-primary" data-action="nav" data-tab="build">去营造</button></div>';
+    if (!buildings.length) return '<div class="empty-state">' + seal('丹') + '<h3>还没有丹房</h3><p>去建筑页建造一座丹房，把药圃里的灵草炼成丹药。</p><button class="btn btn-primary" data-action="nav" data-tab="build">去建筑</button></div>';
     var html = buildings.map(function (b) {
       var worker = b.workers.length ? E.discipleById(UI.game, b.workers[0]) : null;
       var recipes = D.RECIPES.filter(function (r) { return E.recipeUnlocked(UI.game, r); });
@@ -1325,7 +1351,7 @@
   }
 
   function openIntro() {
-    var content = '<div class="intro-modal"><div class="intro-art"><img src="assets/qingya-panorama.jpg" alt="云海中的青崖山门"></div><div class="intro-body"><p class="eyebrow">THE FIRST DAY</p><h2>青崖山，山门初立</h2><p>' + h(D.STORY.start) + '</p><div class="intro-list"><div><b>先看差事</b><span>三名外门弟子已在灵田、药圃、膳堂当值。掌门在静室修炼。</span></div><div><b>再修房子</b><span>弟子居床位有限，灵田与药圃受季节影响。缺什么就去营造。</span></div><div><b>别忘了山下</b><span>历练能带回灵石与声望。声望越高，宗门品阶越高。</span></div></div><div class="modal-actions"><button class="btn btn-primary" data-action="close-modal">开始经营</button><button class="btn btn-ghost" data-action="help">详细玩法</button></div></div></div>';
+    var content = '<div class="intro-modal"><div class="intro-art"><img src="assets/qingya-panorama.jpg" alt="云海中的青崖山门"></div><div class="intro-body"><p class="eyebrow">THE FIRST DAY</p><h2>青崖山，山门初立</h2><p>' + h(D.STORY.start) + '</p><div class="intro-list"><div><b>先看差事</b><span>三名外门弟子已在灵田、药圃、膳堂当值，掌门坐镇山门，也可随时安排差事。</span></div><div><b>再修房子</b><span>弟子居床位有限，灵田与药圃受季节影响。缺什么就去建筑页建造。</span></div><div><b>别忘了山下</b><span>历练能带回灵石与声望。声望越高，宗门品阶越高。</span></div></div><div class="modal-actions"><button class="btn btn-primary" data-action="close-modal">开始经营</button><button class="btn btn-ghost" data-action="help">详细玩法</button></div></div></div>';
     openModal(content, { class: 'intro-modal-wrap', dismissible: true, key: 'intro' });
   }
 
@@ -1347,7 +1373,7 @@
       '<div class="help-block"><h3>三、风水与修炼</h3><p>静室、聚灵阵和灵脉提升灵气；建筑相邻会产生风水加成。灵气与风水越高，弟子修炼越快，突破也越稳。内门弟子会优先进入有空位的静室。</p></div>' +
       '<div class="help-block"><h3>四、事务</h3><p>藏经阁产出悟道，用于参研。丹房把灵草炼成丹药。历练可派弟子下山，带回灵石、灵草、丹药与声望；受伤的弟子需要药庐休养。</p></div>' +
       '<div class="help-block"><h3>五、掌门与传承</h3><p>掌门是固定身份，与普通弟子一样可以领差事、随队历练。掌门若遭遇不测，山门会暂停，需要你从弟子中另立掌门后才能继续。选掌门时优先看资质与境界。</p></div>' +
-      '<div class="help-block"><h3>六、目标</h3><p>提升声望，让宗门从荒山小门一路晋为仙道圣地；同时培养弟子渡劫飞升。</p></div>' +
+      '<div class="help-block"><h3>六、目标</h3><p>提升声望，让宗门从荒山小门一路晋为仙道圣地；同时培养弟子渡劫飞升。飞升后不再领山中差事，但仍可外派历练。</p></div>' +
       '<div class="settings-note"><b>提示</b><p>' + D.TIPS.map(function (t) { return '· ' + h(t); }).join('<br>') + '</p></div>' +
       '</div></div>';
     openModal(content, { class: 'help-modal-wrap', dismissible: true, key: 'help' });
@@ -1370,7 +1396,7 @@
     var def = E.def(b);
     var workers = b.workers.map(function (id) { return E.discipleById(UI.game, id); }).filter(Boolean);
     var eligible = E.aliveDisciples(UI.game).filter(function (d) {
-      if (d.missionId) return false;
+      if (d.missionId || E.isAscended(d)) return false;
       var allowed = { meditation: ['inner'], library: ['inner', 'outer'], alchemy: ['inner', 'outer'], arena: ['inner'], farm: ['outer'], herb: ['outer'], kitchen: ['outer'], infirmary: ['outer', 'inner'] }[b.type];
       return (!allowed || allowed.indexOf(d.role) >= 0);
     });

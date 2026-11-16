@@ -128,7 +128,7 @@
     { key: 'unity', name: '合体期', short: '合体', layers: 4, base: 30000, step: 15000, life: 1500, atk: 3500, def: 1700, hp: 22000, color: '#8d7440' },
     { key: 'mahayana', name: '大乘期', short: '大乘', layers: 4, base: 80000, step: 40000, life: 3000, atk: 9500, def: 4600, hp: 60000, color: '#a35b4a' },
     { key: 'tribulation', name: '渡劫期', short: '渡劫', layers: 4, base: 200000, step: 100000, life: 5000, atk: 26000, def: 12000, hp: 160000, color: '#5c536e' },
-    { key: 'ascended', name: '飞升', short: '飞升', layers: 1, base: 1, step: 0, life: 0, atk: 0, def: 0, hp: 0, color: '#d8b96b' }
+    { key: 'ascended', name: '飞升', short: '飞升', layers: 1, base: 1, step: 0, life: 0, atk: 52000, def: 24000, hp: 320000, color: '#d8b96b' }
   ];
 
   D.LAYER_LABELS = {
@@ -656,7 +656,7 @@
     nav: [
       { id: 'sect', label: '宗门', glyph: '宗' },
       { id: 'disciples', label: '弟子', glyph: '徒' },
-      { id: 'build', label: '营造', glyph: '造' },
+      { id: 'build', label: '建筑', glyph: '筑' },
       { id: 'affairs', label: '事务', glyph: '事' },
       { id: 'market', label: '坊市', glyph: '市' }
     ]

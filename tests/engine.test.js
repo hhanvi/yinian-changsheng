@@ -520,6 +520,48 @@ test('掌门可以领差事，也可以随队历练', function () {
   assert.ok(master.missionId);
 });
 
+test('飞升后不再领差事，但仍可外派历练', function () {
+  var s = newState(22);
+  var d = E.outerDisciples(s)[0];
+  d.realm = 8;
+  d.layer = D.REALMS[8].layers - 1;
+  d.aptitude = 10;
+  d.health = 100;
+  d.mood = 100;
+  var res = null;
+  for (var i = 0; i < 30; i++) {
+    d.exp = E.expNeed(d);
+    d.breakthroughBonus = 10;
+    res = E.tryBreakthrough(s, d.id, false);
+    if (res.ascended) break;
+  }
+  assert.ok(res && res.ascended, '应成功飞升');
+  assert.strictEqual(s.ending, null, '飞升不应结束游戏');
+  assert.ok(d.ascended);
+  assert.strictEqual(d.job, null);
+  assert.strictEqual(E.isAscended(d), true);
+  var farm = s.buildings.find(function (b) { return b.type === 'farm'; });
+  assert.strictEqual(E.assign(s, d.id, farm.id).ok, false);
+  assert.strictEqual(E.eligibleJobs(s, d).length, 0);
+  assert.strictEqual(E.autoAssign(s, d.id).ok, false);
+  var mission = E.startMission(s, 'luoxia', [d.id]);
+  assert.ok(mission.ok, mission.msg);
+  assert.ok(d.missionId);
+});
+
+test('旧版飞升结局会转为继续游戏', function () {
+  var s = newState(23);
+  var d = E.player(s);
+  d.realm = 9;
+  d.layer = 0;
+  s.ending = { type: 'ascension', title: '飞升', discipleId: d.id, day: s.day };
+  E.normalizeState(s);
+  assert.strictEqual(s.ending, null);
+  assert.ok(d.ascended);
+  assert.strictEqual(d.state, 'ascended');
+  assert.strictEqual(d.job, null);
+});
+
 test('掌门阵亡后需要手动另立，不会自动继任', function () {
   var s = newState(20);
   var master = E.player(s);
