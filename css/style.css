@@ -841,6 +841,8 @@ button.build-card.type-card { width: 100%; text-align: left; font: inherit; colo
 .type-status.is-new { color: var(--muted); }
 .type-status.locked { color: var(--cinnabar); border-color: color-mix(in srgb, var(--cinnabar) 32%, var(--line)); }
 .type-card-meta { margin-top: 7px; color: var(--faint); font-size: 9px; }
+.build-buyout-hint { margin-top: 5px; color: var(--gold); font-size: 9px; }
+.type-buyout-note { margin-top: 5px; color: var(--gold); font-size: 9px; line-height: 1.55; }
 .type-card-action { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--cinnabar); font-size: 10px; }
 .type-card-action i { font-style: normal; font-size: 16px; }
 .type-instance-list { display: flex; flex-direction: column; gap: 7px; }

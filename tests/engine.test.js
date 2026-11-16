@@ -378,6 +378,48 @@ test('营造会自动择地、扣费并落在空地上', function () {
   assert.ok(res.spot);
 });
 
+test('缺料时可以用灵石补足建造，单价比坊市略贵', function () {
+  var s = newState();
+  s.resources.wood = 0;
+  s.resources.stone = 0;
+  s.resources.stones = 500;
+  var quote = E.buildQuote(s, D.BUILDINGS.dorm.cost);
+  assert.strictEqual(quote.ok, true);
+  assert.strictEqual(quote.extra, 180);
+  assert.ok(quote.extra > 30 * 3 + 15 * 3);
+  var res = E.buildAuto(s, 'dorm', { buyout: true });
+  assert.ok(res.ok);
+  assert.strictEqual(s.resources.stones, 320);
+  assert.strictEqual(s.resources.wood, 0);
+  assert.strictEqual(s.resources.stone, 0);
+});
+
+test('灵石不足时不会用补足方式扣掉材料', function () {
+  var s = newState();
+  s.resources.wood = 0;
+  s.resources.stone = 0;
+  s.resources.stones = 100;
+  var before = s.buildings.length;
+  var res = E.buildAuto(s, 'dorm', { buyout: true });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(s.resources.stones, 100);
+  assert.strictEqual(s.buildings.length, before);
+});
+
+test('扩建也可以用灵石补足材料', function () {
+  var s = newState();
+  var dorm = s.buildings.find(function (b) { return b.type === 'dorm'; });
+  s.resources.wood = 0;
+  s.resources.stone = 0;
+  s.resources.stones = 500;
+  var res = E.upgrade(s, dorm.id, { buyout: true });
+  assert.ok(res.ok);
+  assert.strictEqual(dorm.level, 2);
+  assert.strictEqual(s.resources.stones, 200);
+  assert.strictEqual(s.resources.wood, 0);
+  assert.strictEqual(s.resources.stone, 0);
+});
+
 test('自动安排会为弟子选择合适差事', function () {
   var s = newState();
   var d = E.outerDisciples(s)[0];

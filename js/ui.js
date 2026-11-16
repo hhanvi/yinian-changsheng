@@ -1078,6 +1078,8 @@
     var maxLevel = instances.reduce(function (level, b) { return Math.max(level, b.level || 1); }, 0);
     var locked = def.unlock && !E.hasResearch(UI.game, def.unlock);
     var can = E.canAfford(UI.game, def.cost);
+    var quote = locked ? null : E.buildQuote(UI.game, def.cost);
+    var buyout = !can && quote && quote.ok && quote.extra > 0;
     var tone = locked ? 'locked' : instances.length ? 'is-built' : 'is-new';
     var status = locked ? '需参研' : instances.length ? (constructing ? '营造中' : '已建 ' + instances.length + ' 座') : '未建造';
     var meta = instances.length ? '最高 Lv.' + maxLevel + (constructing ? ' · ' + constructing + ' 处在建' : '') : '点开查看图样';
@@ -1090,6 +1092,7 @@
       '<div class="build-effect">' + h(def.effect) + '</div>' +
       '<div class="type-card-meta">' + meta + '</div>' +
       '<div class="cost-row">' + cost + '</div>' +
+      (buyout ? '<div class="build-buyout-hint">缺料可用灵石补足 · ' + fmt(quote.stonesNeed) + ' 石</div>' : '') +
       '<span class="type-card-action">' + (instances.length ? '查看已建 · 再建一座' : '查看图样 · 建造') + ' <i>›</i></span>' +
       '</button>';
   }
@@ -1419,6 +1422,21 @@
     var cost = {};
     var base = def.upgradeCost || def.cost || {};
     Object.keys(base).forEach(function (k) { cost[k] = Math.round(base[k] * (1 + ((b.level || 1) - 1) * 0.8)); });
+    var canUpgrade = E.canAfford(UI.game, cost);
+    var upgradeQuote = E.buildQuote(UI.game, cost);
+    var upgradeBuyout = !canUpgrade && upgradeQuote.ok && upgradeQuote.extra > 0;
+    var upgradeBtn;
+    if (b.level >= def.maxLevel) {
+      upgradeBtn = '<span class="badge">已至最高等级</span>';
+    } else if (b.construction > 0) {
+      upgradeBtn = '<button class="btn btn-primary" data-action="upgrade" data-id="' + b.id + '" disabled>落成后可扩建</button>';
+    } else if (upgradeBuyout) {
+      upgradeBtn = '<button class="btn btn-primary" data-action="upgrade" data-id="' + b.id + '" data-buyout="1">灵石补足扩建 · ' + fmt(upgradeQuote.stonesNeed) + ' 石 <small>缺料</small></button>';
+    } else if (canUpgrade) {
+      upgradeBtn = '<button class="btn btn-primary" data-action="upgrade" data-id="' + b.id + '">扩建至 Lv.' + (b.level + 1) + ' <small>' + Object.keys(cost).map(function (k) { return (D.RESOURCES[k] ? D.RESOURCES[k].glyph : k) + ' ' + cost[k]; }).join(' · ') + '</small></button>';
+    } else {
+      upgradeBtn = '<button class="btn btn-ghost" data-action="upgrade" data-id="' + b.id + '" disabled>材料不足</button>';
+    }
     var content = '<div class="modal-head building-modal-head"><div><p class="eyebrow">BUILDING</p><h2>' + h(def.name) + ' · Lv.' + b.level + '</h2><p class="detail-sub">' + h(def.effect) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
       '<div class="building-portrait" aria-hidden="true">' + buildingPortrait(b.type, b.level) + '</div>' +
       '<div class="detail-body"><p class="detail-bio">' + h(def.desc) + '</p>' +
@@ -1429,8 +1447,7 @@
       (b.construction <= 0 && E.slotsOf(b) > 0 && workers.length < E.slotsOf(b) ? '<button class="btn btn-jade btn-sm" data-action="auto-staff" data-id="' + b.id + '">一键补位 · 自动挑选空闲弟子</button><div class="assign-list"><h4>也可手动安排</h4>' + eligible.filter(function (d) { return b.workers.indexOf(d.id) < 0; }).map(function (d) { return '<button class="assign-chip" data-action="assign" data-id="' + d.id + '" data-building="' + b.id + '">' + avatarSvg(d, 28) + '<span>' + h(d.name) + '</span><small>' + h(stage(d)) + '</small></button>'; }).join('') + '</div>' : '') +
       '</div>' +
       (b.type === 'alchemy' ? '<div class="detail-section"><div class="detail-section-head"><h4>当前丹方</h4></div><div class="recipe-options inline">' + D.RECIPES.filter(function (r) { return E.recipeUnlocked(UI.game, r); }).map(function (r) { return '<button class="recipe-option ' + (b.recipe === r.id ? 'active' : '') + '" data-action="recipe" data-building="' + b.id + '" data-recipe="' + r.id + '">' + D.PILLS[r.out].glyph + ' ' + h(r.name) + '</button>'; }).join('') + '</div></div>' : '') +
-      '<div class="building-actions">' +
-      (b.level < def.maxLevel ? '<button class="btn btn-primary" data-action="upgrade" data-id="' + b.id + '" ' + (b.construction > 0 ? 'disabled' : '') + '>' + (b.construction > 0 ? '落成后可扩建' : '扩建至 Lv.' + (b.level + 1) + ' <small>' + Object.keys(cost).map(function (k) { return (D.RESOURCES[k] ? D.RESOURCES[k].glyph : k) + ' ' + cost[k]; }).join(' · ') + '</small>') + '</button>' : '<span class="badge">已至最高等级</span>') +
+      '<div class="building-actions">' + upgradeBtn +
       (b.type !== 'gate' ? '<button class="btn btn-ghost" data-action="demolish" data-id="' + b.id + '">拆除</button>' : '') +
       '</div></div></div>';
     openModal(content, { class: 'building-modal-wrap', dismissible: true, key: 'building:' + id });
@@ -1444,6 +1461,8 @@
     var maxLevel = instances.reduce(function (level, b) { return Math.max(level, b.level || 1); }, 0);
     var locked = def.unlock && !E.hasResearch(UI.game, def.unlock);
     var can = E.canAfford(UI.game, def.cost);
+    var quote = locked ? null : E.buildQuote(UI.game, def.cost);
+    var buyout = !can && quote && quote.ok && quote.extra > 0;
     var uniqueBlocked = def.unique && instances.length > 0;
     var category = D.BUILD_CATEGORIES.find(function (c) { return c.id === def.category; }) || { name: '建筑' };
     var cost = Object.keys(def.cost).length ? Object.keys(def.cost).map(function (k) {
@@ -1462,7 +1481,10 @@
     } else if (uniqueBlocked) {
       newBlock = '<div class="type-new-box is-locked"><b>仅此一座</b><p>' + h(def.name) + '已经建成，不能再建第二座。</p></div>';
     } else {
-      newBlock = '<div class="type-new-box"><div class="cost-row">' + cost + '</div><button class="btn ' + (can ? 'btn-primary' : 'btn-ghost') + ' btn-block" data-action="select-build" data-type="' + type + '" ' + (can ? '' : 'disabled') + '>' + (can ? '自动择地建造' : '材料不足') + '</button><p class="type-new-hint">山门会依山势自动选一块空地开工。</p></div>';
+      var canBuild = can || buyout;
+      var buildLabel = can ? '自动择地建造' : buyout ? '灵石补足建造 · ' + fmt(quote.stonesNeed) + ' 石' : '材料不足';
+      var buyoutNote = buyout ? ' 缺料按略高于坊市的价格用灵石补足。' : '';
+      newBlock = '<div class="type-new-box"><div class="cost-row">' + cost + '</div><button class="btn ' + (canBuild ? 'btn-primary' : 'btn-ghost') + ' btn-block" data-action="select-build" data-type="' + type + '"' + (buyout ? ' data-buyout="1"' : '') + ' ' + (canBuild ? '' : 'disabled') + '>' + buildLabel + '</button><p class="type-new-hint">山门会依山势自动选一块空地开工。' + buyoutNote + '</p>' + (buyout ? '<p class="type-buyout-note">灵石补足单价：木/石 4、灵草 13、粮 6，略高于坊市。</p>' : '') + '</div>';
     }
     var content = '<div class="modal-head building-modal-head"><div><p class="eyebrow">BUILDING TYPE</p><h2>' + h(def.name) + '</h2><p class="detail-sub">' + h(def.effect) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
       '<div class="building-portrait" aria-hidden="true">' + buildingPortrait(type, maxLevel || 1) + '</div>' +
@@ -1823,7 +1845,8 @@
         var buildType = el.getAttribute('data-type') || value;
         var def = D.BUILDINGS[buildType];
         if (!def) break;
-        var built = E.buildAuto(UI.game, buildType);
+        var buyoutBuild = el.getAttribute('data-buyout') === '1';
+        var built = E.buildAuto(UI.game, buildType, buyoutBuild ? { buyout: true } : undefined);
         if (!built.ok) { toast(built.msg, 'warn'); break; }
         UI.buildType = null;
         UI.tab = 'build';
@@ -1831,13 +1854,14 @@
         saveNow();
         closeModal();
         renderAll();
-        toast(def.name + '已在山中择地开工。', 'good');
+        toast(def.name + (buyoutBuild ? '已在山中择地开工（灵石补足材料）。' : '已在山中择地开工。'), 'good');
         break;
       }
       case 'cancel-build': UI.buildType = null; renderAll(); break;
       case 'upgrade':
-        var upg = E.upgrade(UI.game, id);
-        if (!upg.ok) toast(upg.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); openBuilding(id); toast('扩建完成。', 'good'); }
+        var buyoutUpgrade = el.getAttribute('data-buyout') === '1';
+        var upg = E.upgrade(UI.game, id, buyoutUpgrade ? { buyout: true } : undefined);
+        if (!upg.ok) toast(upg.msg, 'warn'); else { saveNow(); closeModal(); renderAll(); openBuilding(id); toast(buyoutUpgrade ? '扩建完成（灵石补足材料）。' : '扩建完成。', 'good'); }
         break;
       case 'demolish':
         if (!confirm('确定拆除这座建筑？返还一半木石。')) break;

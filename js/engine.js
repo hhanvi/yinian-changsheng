@@ -1090,14 +1090,63 @@
     return true;
   };
 
-  E.build = function (state, type, x, y) {
+  /* 缺料时用灵石补足：单价比坊市略高，避免绕开坊市直接白拿材料。 */
+  E.BUILD_BUYOUT = { wood: 4, stone: 4, herbs: 13, food: 6 };
+
+  E.buildQuote = function (state, cost) {
+    var missing = {}, extra = 0, blocked = false, normalStones = 0;
+    Object.keys(cost || {}).forEach(function (k) {
+      var need = cost[k] || 0;
+      var have = state.resources[k] || 0;
+      if (k === 'stones') {
+        normalStones += need;
+        if (have < need) blocked = true;
+        return;
+      }
+      if (have < need) {
+        var price = E.BUILD_BUYOUT[k];
+        if (!price) { blocked = true; return; }
+        missing[k] = need - have;
+        extra += (need - have) * price;
+      }
+    });
+    var stonesNeed = normalStones + extra;
+    return {
+      ok: !blocked && (state.resources.stones || 0) >= stonesNeed,
+      missing: missing,
+      extra: extra,
+      normalStones: normalStones,
+      stonesNeed: stonesNeed,
+      blocked: blocked
+    };
+  };
+
+  E.payBuild = function (state, cost, opts) {
+    if (!opts || !opts.buyout) return E.pay(state, cost);
+    var quote = E.buildQuote(state, cost);
+    if (!quote.ok) return false;
+    Object.keys(cost || {}).forEach(function (k) {
+      if (k === 'stones') return;
+      state.resources[k] = Math.max(0, (state.resources[k] || 0) - cost[k]);
+    });
+    state.resources.stones -= quote.stonesNeed;
+    return true;
+  };
+
+  E.build = function (state, type, x, y, opts) {
     var def = D.BUILDINGS[type];
     if (!def) return { ok: false, msg: '未知建筑。' };
     if (def.unique && state.buildings.some(function (b) { return b.type === type; })) return { ok: false, msg: '此建筑只能有一座。' };
     if (def.unlock && !E.hasResearch(state, def.unlock)) return { ok: false, msg: '尚未参研出营造之法。' };
     if (!E.isBuildable(state, x, y)) return { ok: false, msg: '此处无法营造。' };
-    if (!E.canAfford(state, def.cost)) return { ok: false, msg: '木石灵石不足。' };
-    E.pay(state, def.cost);
+    var useBuyout = !!(opts && opts.buyout);
+    var quote = useBuyout ? E.buildQuote(state, def.cost) : null;
+    if (useBuyout) {
+      if (!quote.ok) return { ok: false, msg: quote.blocked ? '材料无法用灵石补足。' : '灵石不足，补足材料需要 ' + quote.stonesNeed + ' 石。', quote: quote };
+    } else if (!E.canAfford(state, def.cost)) {
+      return { ok: false, msg: '木石灵石不足。' };
+    }
+    if (!E.payBuild(state, def.cost, opts)) return { ok: false, msg: '资源不足。' };
     var b = {
       id: 'b' + (state.nextBuildingId++), type: type, x: x, y: y,
       level: 1, construction: def.buildDays > 0 ? def.buildDays : 0,
@@ -1105,8 +1154,10 @@
     };
     state.buildings.push(b);
     state.stats.built = (state.stats.built || 0) + 1;
-    E.log(state, '开始营造' + def.name + '。', 'build');
-    return { ok: true, building: b };
+    E.log(state, '开始营造' + def.name + (useBuyout && quote.extra ? '（灵石补足材料）' : '') + '。', 'build');
+    var result = { ok: true, building: b };
+    if (quote && quote.extra) result.buyout = quote;
+    return result;
   };
 
   /* 自动择地：靠近现有屋舍，但避开山道；同类建筑略有聚集。 */
@@ -1150,20 +1201,26 @@
     return best;
   };
 
-  E.buildAuto = function (state, type) {
+  E.buildAuto = function (state, type, opts) {
     var def = D.BUILDINGS[type];
     if (!def) return { ok: false, msg: '未知建筑。' };
     if (def.unique && state.buildings.some(function (b) { return b.type === type; })) return { ok: false, msg: '此建筑只能有一座。' };
     if (def.unlock && !E.hasResearch(state, def.unlock)) return { ok: false, msg: '尚未参研出营造之法。' };
-    if (!E.canAfford(state, def.cost)) return { ok: false, msg: '木石灵石不足。' };
+    var useBuyout = !!(opts && opts.buyout);
+    if (useBuyout) {
+      var quote = E.buildQuote(state, def.cost);
+      if (!quote.ok) return { ok: false, msg: quote.blocked ? '材料无法用灵石补足。' : '灵石不足，补足材料需要 ' + quote.stonesNeed + ' 石。', quote: quote };
+    } else if (!E.canAfford(state, def.cost)) {
+      return { ok: false, msg: '木石灵石不足。' };
+    }
     var spot = E.findBuildSpot(state, type);
     if (!spot) return { ok: false, msg: '山中已无空地可营造。' };
-    var res = E.build(state, type, spot.x, spot.y);
+    var res = E.build(state, type, spot.x, spot.y, opts);
     if (res.ok) res.spot = spot;
     return res;
   };
 
-  E.upgrade = function (state, buildingId) {
+  E.upgrade = function (state, buildingId, opts) {
     var b = E.buildingById(state, buildingId);
     if (!b) return { ok: false, msg: '建筑不存在。' };
     var def = E.def(b);
@@ -1173,10 +1230,17 @@
     var cost = {};
     var base = def.upgradeCost || def.cost || {};
     Object.keys(base).forEach(function (k) { cost[k] = Math.round(base[k] * (1 + (b.level - 1) * 0.8)); });
-    if (!E.pay(state, cost)) return { ok: false, msg: '资源不足。' };
+    var useBuyout = !!(opts && opts.buyout);
+    var quote = useBuyout ? E.buildQuote(state, cost) : null;
+    if (useBuyout && !quote.ok) {
+      return { ok: false, msg: quote.blocked ? '材料无法用灵石补足。' : '灵石不足，补足材料需要 ' + quote.stonesNeed + ' 石。', quote: quote };
+    }
+    if (!E.payBuild(state, cost, opts)) return { ok: false, msg: '资源不足。' };
     b.level++;
-    E.log(state, def.name + '扩建至 ' + b.level + ' 级。', 'build');
-    return { ok: true, cost: cost };
+    E.log(state, def.name + '扩建至 ' + b.level + ' 级' + (useBuyout && quote.extra ? '（灵石补足材料）' : '') + '。', 'build');
+    var result = { ok: true, cost: cost };
+    if (quote && quote.extra) result.buyout = quote;
+    return result;
   };
 
   E.demolish = function (state, buildingId) {
