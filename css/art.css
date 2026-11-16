@@ -21,6 +21,7 @@
   --shadow: 0 10px 28px rgba(39, 70, 53, .08);
   --shadow-soft: 0 3px 12px rgba(39, 70, 53, .06);
   --nav-bg: rgba(245, 246, 237, .96);
+  --hero-art: url('../assets/qingya-panorama.jpg');
 }
 [data-theme="night"] {
   --bg: #142822; --bg-deep: #0f211d; --panel: #1d332b;
@@ -40,7 +41,7 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .brand-seal { background: #315f50; color: #f4ead2; border-radius: 3px; }
 .eyebrow { letter-spacing: .12em; }
 .landing { isolation: isolate; background: #e2ebe0; }
-.landing::before { content: ""; position: absolute; inset: 0; z-index: -2; background: url('../assets/qingya-panorama.jpg') center/cover no-repeat; }
+.landing::before { content: ""; position: absolute; inset: 0; z-index: -2; background: var(--hero-art) center/cover no-repeat; }
 .landing::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(238, 243, 232, .95), rgba(238, 243, 232, .84) 24%, rgba(238, 243, 232, .35) 48%, transparent 70%); }
 .landing-inner { width: min(1440px, 100%); min-height: 100svh; padding: 48px 6.5%; display: flex; align-items: center; }
 .landing-copy { max-width: 520px; padding-bottom: 14px; }
@@ -63,8 +64,8 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 [data-theme="night"] .landing::before { filter: brightness(.65) saturate(.75); }
 [data-theme="night"] .landing h1 { color: var(--ink); text-shadow: none; }
 [data-theme="night"] .landing-sub, [data-theme="night"] .landing-intro, [data-theme="night"] .landing-edition, [data-theme="night"] .landing-brand, [data-theme="night"] .landing-features b, [data-theme="night"] .landing-features span, [data-theme="night"] .landing-foot { color: var(--ink-soft); }
-.creation { background: linear-gradient(rgba(228, 235, 224, .7), rgba(228, 235, 224, .95)), url('../assets/qingya-panorama.jpg') center/cover fixed; }
-[data-theme="night"] .creation { background: linear-gradient(rgba(20, 40, 34, .8), rgba(20, 40, 34, .97)), url('../assets/qingya-panorama.jpg') center/cover fixed; }
+.creation { background: linear-gradient(rgba(228, 235, 224, .7), rgba(228, 235, 224, .95)), var(--hero-art) center/cover fixed; }
+[data-theme="night"] .creation { background: linear-gradient(rgba(20, 40, 34, .8), rgba(20, 40, 34, .97)), var(--hero-art) center/cover fixed; }
 .topbar-wrap { background: color-mix(in srgb, var(--panel) 92%, transparent); }
 .topbar, .resource-strip, .game-main { width: min(1440px, 100%); }
 .topbar { min-height: 66px; }
@@ -75,7 +76,7 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .res-glyph { border-radius: 4px; }
 .resource-strip { padding-bottom: 10px; }
 .game-main { padding-top: 20px; }
-.scenic-header { position: relative; min-height: 188px; overflow: hidden; margin-bottom: 20px; border: 1px solid var(--line-strong); border-radius: 9px; background: url('../assets/qingya-panorama.jpg') 60% 48%/cover; }
+.scenic-header { position: relative; min-height: 188px; overflow: hidden; margin-bottom: 20px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--hero-art) 60% 48%/cover; }
 .scenic-header::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(235, 242, 225, .97), rgba(235, 242, 225, .7) 30%, transparent 70%); }
 .scenic-copy { position: relative; padding: 23px 30px; max-width: 65%; }
 .scenic-kicker { color: #496c50; font-family: var(--serif); font-size: 11px; letter-spacing: .22em; }
@@ -152,7 +153,9 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
   .landing-copy { max-width: 480px; }
 }
 @media (max-width: 640px) {
-  .landing::before { background-position: 63% top; }
+  :root { --hero-art: url('../assets/qingya-panorama-mobile.jpg'); }
+  .creation { background-attachment: scroll; }
+  .landing::before { background-position: center top; }
   .landing::after { background: linear-gradient(0deg, #edf2e5 0, #edf2e5f2 38%, #edf2e59e 68%, #edf2e51f 100%); }
   .landing-inner { align-items: flex-end; padding: 150px 24px 32px; min-height: 100svh; }
   .landing-copy { width: 100%; padding-bottom: 0; }
@@ -170,7 +173,7 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
   .landscape-inscription { font-size: 12px; right: 15px; top: 24px; }
   [data-theme="night"] .landing::after { background: linear-gradient(0deg, #142822 0, #142822f2 40%, #14282280 80%, #1428223d 100%); }
   .game-main { padding: 12px 10px 100px; }
-  .scenic-header { min-height: 162px; margin-bottom: 12px; background-position: 64% 50%; }
+  .scenic-header { min-height: 162px; margin-bottom: 12px; background-position: center 42%; }
   .scenic-header::before { background: linear-gradient(90deg, #ebf2e1fa, #ebf2e1dd 58%, #ebf2e133 100%); }
   .scenic-copy { max-width: 90%; padding: 18px 18px; }
   .scenic-copy h2 { font-size: 22px; letter-spacing: .05em; margin-top: 8px; }

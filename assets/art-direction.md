@@ -1,9 +1,31 @@
-# 青崖山水插画
+# 青崖山水主视觉
 
-文件：`qingya-panorama.jpg`，1672 × 941，内置 ImageGen 生成，2026-11-16。最终图片已随项目保存，JPG 仅为 PNG 的交付格式转换，避免加载多余体积。游戏不调用图片生成 API，不引用外部图片地址。
+文件：
 
-用途：开场背景、宗门首页横卷、地图远景。可交互地形、建筑、人物仍为原生 SVG。主题用石青、松绿、云白、淡金，宋体题字与微软雅黑操作文字。
+- `qingya-panorama.jpg`，1536 × 864，桌面横幅，373 KB
+- `qingya-panorama-mobile.jpg`，832 × 1216，手机竖幅，272 KB
 
-最终提示词：
+用途：开场背景、创建页背景、山门页横卷与新手引导插图。舆图已移除；建筑详情中的小景仍由原生 SVG 绘制。
 
-Use case: stylized-concept. Asset type: premium Chinese cultivation sect management game's panoramic background illustration. Create an exquisite original Qinglü shanshui landscape, 16:9 landscape. Huge layered azurite and malachite mountain peaks rising above an ocean of pearl-white mist, a quiet Taoist immortal sect of tiny traditional Chinese green-roof pavilions on high cliff terraces, slender waterfalls flowing down the mountains, delicate dark pines framing the lower corners, pale warm sun in a luminous celadon sky. Fine gongbi detail with rich mineral pigments, painterly cinematic depth, elegant atmospheric perspective, subtle antique gold highlights. Foreground terraces should feel serene and lived-in, with lanterns and stone steps; no people close up. Main mountain and temple cluster in right two-thirds, left one-third airy pale mist and distant mountains with low contrast to allow dark green title text overlay. Truly polished game key art, not flat vector art, not 3D low-poly. No text, no letters, no watermark, no UI.
+## 生成方式
+
+本机 ComfyUI 0.45.0 + SDXL Base 1.0，PyTorch cu128，RTX 5060 8GB。
+
+- 采样器：DPM++ 2M Karras
+- 步数：30
+- CFG：6.5
+- 桌面种子：20261119
+- 手机种子：20261120
+- 负向提示词：`text, watermark, logo, signature, UI, frame, border, modern buildings, city, people, blurry, low quality, deformed architecture, duplicate, cropped, oversaturated, neon`
+
+## 桌面提示词
+
+Blue-green shanshui landscape in the style of traditional Chinese mineral pigment painting, wide 16:9 panorama, layered jade mountains, secluded sect courtyards and pavilions, winding stone steps, pines, mist, waterfall, cloud sea, refined gold outlines, elegant, serene, no text, no people, no UI.
+
+## 手机提示词
+
+Blue-green shanshui landscape in the style of traditional Chinese mineral pigment painting, vertical composition, tall hanging scroll, layered jade mountains, secluded sect courtyards and pavilions, winding stone steps, pines, mist, waterfall, cloud sea, refined gold outlines, elegant, serene, no text, no people, no UI.
+
+## 色彩
+
+石青、石绿、云白、淡金。界面继续使用松绿、宣纸与淡金作为操作色；插画只负责氛围，不承载可点击信息。
