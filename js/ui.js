@@ -837,22 +837,6 @@
     }).join('') + '</div>', { key: 'journey', class: 'journey-modal' });
   }
 
-  function sectMap() {
-    var built = UI.game.buildings.slice().sort(function (a, b) { return (a.y + a.x) - (b.y + b.x); });
-    var markers = built.map(function (b) {
-      var def = E.def(b);
-      var left = 16 + (b.x / 12) * 68;
-      var top = 30 + (b.y / 8) * 46;
-      var z = 20 + Math.round(b.y * 10 + b.x);
-      return '<div class="map-building' + (b.construction > 0 ? ' is-building' : '') + '" style="left:' + left.toFixed(2) + '%;top:' + top.toFixed(2) + '%;z-index:' + z + '">' +
-        '<svg viewBox="-38 -50 76 68" aria-hidden="true">' + buildingGroup(b, { noIso: true, decorative: true, hideLevel: true }) + '</svg>' +
-        '<span class="map-building-label">' + h(def.name) + (b.construction > 0 ? ' · 营造中' : ' · Lv.' + b.level) + '</span></div>';
-    }).join('');
-    var done = built.filter(function (b) { return b.construction <= 0; }).length;
-    return '<section class="panel sect-map-panel"><div class="panel-head"><div><p class="eyebrow">SECT GROUNDS</p><h3>山门舆图</h3></div><div class="sect-map-actions"><span class="sect-map-count">已建成 ' + done + ' 座</span><button class="text-btn" data-action="nav" data-tab="build">建筑 ›</button></div></div>' +
-      '<div class="sect-map" role="img" aria-label="山门建筑分布图">' + markers + '<div class="sect-map-caption">位置由山势自动安排</div></div></section>';
-  }
-
   function renderSect() {
     if (!UI.game) return;
     var st = stats();
@@ -872,7 +856,6 @@
     var topDisciples = E.aliveDisciples(UI.game).sort(function (a, b) { return E.power(b, UI.game) - E.power(a, UI.game); }).slice(0, 3);
 
     view.innerHTML = '<section class="scenic-header" aria-label="青崖山水"><div class="scenic-copy"><span class="scenic-kicker">青崖山 · ' + d.season.full + '</span><h2>山有归处，心向长生。</h2><p>' + h(d.season.desc) + '</p><button class="scenic-link" data-action="open-journey">展开宗门长卷 <span>七章仙途 ›</span></button></div><div class="scenic-seal" aria-hidden="true">青崖<br>山居</div></section><div class="sect-layout"><div class="mountain-column">' +
-      sectMap() +
       '<div class="panel sect-status">' +
       '<div class="panel-head"><h3>宗门气象</h3><span class="panel-mark">' + st.fsGrade + '</span></div>' +
       '<div class="grade-line"><span class="badge badge-grade" style="--grade:' + st.grade.color + '">' + h(st.grade.name) + '</span><span>' + h(st.grade.desc) + '</span></div>' +
