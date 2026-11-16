@@ -199,6 +199,48 @@ test('坊市买卖与库存变化', function () {
   assert.ok(sold.ok);
 });
 
+test('坊市可以一次买下全部库存', function () {
+  var s = newState();
+  s.market.stock = [
+    { kind: 'resource', id: 'food', qty: 5, price: 4 },
+    { kind: 'pill', id: 'huichun', qty: 2, price: 18 }
+  ];
+  s.resources.stones = 100;
+  var food = s.resources.food;
+  var pills = s.pills.huichun || 0;
+  var r = E.marketBuyAll(s);
+  assert.ok(r.ok);
+  assert.strictEqual(r.total, 56);
+  assert.strictEqual(s.resources.stones, 44);
+  assert.strictEqual(s.resources.food, food + 5);
+  assert.strictEqual(s.pills.huichun, pills + 2);
+  assert.strictEqual(s.market.stock.length, 0);
+});
+
+test('全部购买灵石不足时不会扣库存', function () {
+  var s = newState();
+  s.market.stock = [{ kind: 'resource', id: 'food', qty: 5, price: 4 }];
+  s.resources.stones = 10;
+  var r = E.marketBuyAll(s);
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(s.resources.stones, 10);
+  assert.strictEqual(s.market.stock.length, 1);
+});
+
+test('坊市停留时不会换货', function () {
+  var s = newState(21);
+  s.market.hold = true;
+  s.market.restockDay = s.day;
+  var day = s.day;
+  var stock = s.market.stock.length;
+  E.tick(s);
+  assert.strictEqual(s.market.restockDay, day);
+  assert.strictEqual(s.market.stock.length, stock);
+  s.market.hold = false;
+  E.tick(s);
+  assert.ok(s.market.restockDay > day);
+});
+
 test('招徒候选与入门', function () {
   var s = newState();
   s.resources.stones = 100;

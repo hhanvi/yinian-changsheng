@@ -566,7 +566,7 @@
       insight: 0,
       pills: { juqi: 1, huichun: 2 },
       research: { nodes: {}, totalSpent: 0 },
-      market: { stock: [], restockDay: 1, lastRefresh: 0 },
+      market: { stock: [], restockDay: 1, lastRefresh: 0, hold: false },
       missions: [],
       missionOrders: [],
       nextMissionOrderId: 1,
@@ -1039,7 +1039,7 @@
     processMissionOrders(state);
 
     // 坊市补货
-    if (state.day >= state.market.restockDay) {
+    if (state.day >= state.market.restockDay && !state.market.hold) {
       E.refreshMarket(state);
       E.log(state, '山下坊市换了新货。', 'system');
     }
@@ -1956,6 +1956,43 @@
     return { ok: true };
   };
 
+  E.marketTotal = function (state) {
+    var total = 0;
+    (state.market.stock || []).forEach(function (item) {
+      if (!item.gift) total += item.price * item.qty;
+    });
+    return total;
+  };
+
+  E.marketBuyAll = function (state) {
+    var stock = state.market.stock || [];
+    if (!stock.length) return { ok: false, msg: '货架已经空了。' };
+    var total = 0;
+    var count = 0;
+    stock.forEach(function (item) {
+      if (item.gift) return;
+      total += item.price * item.qty;
+      count += item.qty;
+    });
+    if ((state.resources.stones || 0) < total) {
+      return { ok: false, msg: '灵石不足，全部买下需要 ' + total + ' 石。', total: total };
+    }
+    var gifts = 0;
+    if (total > 0) state.resources.stones -= total;
+    stock.forEach(function (item) {
+      if (item.gift) {
+        state.resources.stones += item.qty;
+        gifts += item.qty;
+      } else if (item.kind === 'pill') {
+        state.pills[item.id] = (state.pills[item.id] || 0) + item.qty;
+      } else {
+        state.resources[item.id] = (state.resources[item.id] || 0) + item.qty;
+      }
+    });
+    state.market.stock = [];
+    return { ok: true, total: total, count: count, gifts: gifts };
+  };
+
   E.sellPrices = { food: 2, wood: 2, stone: 2, herbs: 6 };
   E.sellPriceOf = function (id) {
     if (E.sellPrices[id]) return E.sellPrices[id];
@@ -2006,7 +2043,8 @@
     });
     state.research = state.research && typeof state.research === 'object' ? state.research : { nodes: {}, totalSpent: 0 };
     state.research.nodes = state.research.nodes && typeof state.research.nodes === 'object' ? state.research.nodes : {};
-    state.market = state.market && typeof state.market === 'object' ? state.market : { stock: [], restockDay: 1, lastRefresh: 0 };
+    state.market = state.market && typeof state.market === 'object' ? state.market : { stock: [], restockDay: 1, lastRefresh: 0, hold: false };
+    state.market.hold = false;
     state.market.stock = Array.isArray(state.market.stock) ? state.market.stock : [];
     state.stats = state.stats && typeof state.stats === 'object' ? state.stats : {};
     ['days', 'battlesWon', 'battlesLost', 'recruited', 'promoted', 'missions', 'pillsMade', 'maxRenown', 'breakthroughs', 'built'].forEach(function (k) {

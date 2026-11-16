@@ -795,6 +795,7 @@
   function renderView() {
     if (!UI.game) return;
     if (UI.game.ending) { renderEnding(); return; }
+    UI.game.market.hold = UI.tab === 'market';
     var scroll = window.scrollY;
     if (UI.tab === 'sect') renderSect();
     else if (UI.tab === 'disciples') renderDisciples();
@@ -1062,40 +1063,35 @@
       return true;
     });
     var st = stats();
-    var built = UI.game.buildings.slice().sort(function (a, b) { return (a.y + a.x) - (b.y + b.x); });
-    var done = built.filter(function (b) { return b.construction <= 0; }).length;
-    var builtHtml = built.length ? '<div class="built-grid">' + built.map(function (b) {
-      var def = E.def(b);
-      var constructing = b.construction > 0;
-      return '<button class="built-card' + (constructing ? ' is-building' : '') + '" data-action="open-building" data-id="' + b.id + '">' +
-        '<span class="built-card-glyph">' + h(def.glyph) + '</span>' +
-        '<span class="built-card-main"><b>' + h(def.name) + '</b><small>Lv.' + b.level + ' · ' + (constructing ? '营造中 ' + b.construction + ' 日' : b.workers.length + ' 人当值') + '</small></span>' +
-        '<span class="built-card-arrow">›</span></button>';
-    }).join('') + '</div>' : '<div class="built-empty">山中还没有建筑，从下方选一张图样开始。</div>';
+    var done = UI.game.buildings.filter(function (b) { return b.construction <= 0; }).length;
     document.getElementById('view').innerHTML = '<div class="view-page">' +
-      '<div class="view-head"><div><p class="eyebrow">SECT BUILDINGS</p><h2>山门建筑</h2><p>已建成的屋舍都在这里；新建筑会依山势自动择地开工。</p></div><div class="view-head-actions"><span class="capacity-note">已建成 ' + done + ' 座 · 空地 ' + countBuildable() + ' · 风水 ' + st.fengShui + ' ' + st.fsGrade + '</span></div></div>' +
-      '<section class="built-section"><div class="built-section-head"><div><h3>已建成</h3><span>' + done + ' 座</span></div><small>点击查看当值弟子、升级或拆除。</small></div>' + builtHtml + '</section>' +
-      '<div class="build-layout"><section><div class="build-section-head"><div><h3>建造新建筑</h3><span>选图样，自动择地</span></div></div><div class="cat-tabs">' + cats.map(function (c) {
+      '<div class="view-head"><div><p class="eyebrow">SECT BUILDINGS</p><h2>山门建筑</h2><p>每一类建筑都在这里。点开可查看已建好的实例，或再建一座。</p></div><div class="view-head-actions"><span class="capacity-note">已建成 ' + done + ' 座 · 空地 ' + countBuildable() + ' · 风水 ' + st.fengShui + ' ' + st.fsGrade + '</span></div></div>' +
+      '<div class="build-layout"><section><div class="build-section-head"><div><h3>建筑图鉴</h3><span>已建与新建都在同一处</span></div></div><div class="cat-tabs">' + cats.map(function (c) {
         return '<button class="filter-chip ' + (UI.buildCat === c.id ? 'active' : '') + '" data-action="build-cat" data-value="' + c.id + '">' + c.name + '</button>';
-      }).join('') + '</div><div class="build-grid">' + list.map(buildingCatalogCard).join('') + '</div></section>' +
+      }).join('') + '</div><div class="build-grid">' + list.map(buildingTypeCard).join('') + '</div></section>' +
       '<aside class="build-aside"><div class="panel build-note"><div class="panel-head"><h3>风水小记</h3><span class="panel-mark">诀</span></div><p>' + h(st.grade.desc) + '</p><ul><li>静室靠近聚灵阵，灵气更盛。</li><li>丹房靠近药圃，取药更顺手。</li><li>弟子居靠近灵井，起居更清爽。</li><li>灵田与药圃受季节影响，冬天前要囤粮。</li></ul></div></aside></div></div>';
   }
 
-  function buildingCatalogCard(def) {
-    var built = UI.game.buildings.some(function (b) { return b.type === def.id; });
+  function buildingTypeCard(def) {
+    var instances = UI.game.buildings.filter(function (b) { return b.type === def.id; });
+    var constructing = instances.filter(function (b) { return b.construction > 0; }).length;
+    var maxLevel = instances.reduce(function (level, b) { return Math.max(level, b.level || 1); }, 0);
     var locked = def.unlock && !E.hasResearch(UI.game, def.unlock);
     var can = E.canAfford(UI.game, def.cost);
-    var uniqueBlocked = def.unique && built;
+    var tone = locked ? 'locked' : instances.length ? 'is-built' : 'is-new';
+    var status = locked ? '需参研' : instances.length ? (constructing ? '营造中' : '已建 ' + instances.length + ' 座') : '未建造';
+    var meta = instances.length ? '最高 Lv.' + maxLevel + (constructing ? ' · ' + constructing + ' 处在建' : '') : '点开查看图样';
     var cost = Object.keys(def.cost).length ? Object.keys(def.cost).map(function (k) {
       return '<span class="cost-chip ' + ((UI.game.resources[k] || 0) < def.cost[k] ? 'lack' : '') + '">' + (D.RESOURCES[k] ? D.RESOURCES[k].glyph : k) + ' ' + def.cost[k] + '</span>';
     }).join('') : '<span class="cost-chip">初始建筑</span>';
-    return '<article class="build-card ' + (locked ? 'locked' : '') + ' ' + (uniqueBlocked ? 'built' : '') + '">' +
-      '<div class="build-card-head"><span class="build-glyph">' + h(def.glyph) + '</span><div><h3>' + h(def.name) + '</h3><small>' + (D.BUILD_CATEGORIES.find(function (c) { return c.id === def.category; }) || {}).name + '</small></div>' + (built && def.unique ? '<span class="badge">已建</span>' : '') + '</div>' +
+    return '<button class="build-card type-card ' + tone + '" data-action="open-building-type" data-type="' + def.id + '">' +
+      '<div class="build-card-head"><span class="build-glyph">' + h(def.glyph) + '</span><div><h3>' + h(def.name) + '</h3><small>' + (D.BUILD_CATEGORIES.find(function (c) { return c.id === def.category; }) || {}).name + '</small></div><span class="type-status ' + tone + '">' + status + '</span></div>' +
       '<p class="build-desc">' + h(def.desc) + '</p>' +
       '<div class="build-effect">' + h(def.effect) + '</div>' +
+      '<div class="type-card-meta">' + meta + '</div>' +
       '<div class="cost-row">' + cost + '</div>' +
-      '<button class="btn ' + (locked || uniqueBlocked || !can ? 'btn-ghost' : 'btn-primary') + ' btn-sm btn-block" data-action="select-build" data-type="' + def.id + '" ' + (locked || uniqueBlocked || !can ? 'disabled' : '') + '>' + (locked ? '需参研' : uniqueBlocked ? '已建成' : !can ? '材料不足' : '建造') + '</button>' +
-      '</article>';
+      '<span class="type-card-action">' + (instances.length ? '查看已建 · 再建一座' : '查看图样 · 建造') + ' <i>›</i></span>' +
+      '</button>';
   }
 
   /* ------------------------------------------------------------------ */
@@ -1191,6 +1187,27 @@
   function renderMarket() {
     var stock = UI.game.market.stock || [];
     var restock = Math.max(0, UI.game.market.restockDay - UI.game.day);
+    var total = E.marketTotal(UI.game);
+    var canAll = stock.length > 0 && UI.game.resources.stones >= total;
+    var qtyState = {};
+    var activeKey = '';
+    var selStart = 0;
+    var selEnd = 0;
+    function qtyKey(inp) {
+      if (!inp || !inp.classList || !inp.classList.contains('qty-input')) return '';
+      if (inp.hasAttribute('data-buy-index')) return 'buy:' + inp.getAttribute('data-buy-index');
+      if (inp.hasAttribute('data-sell-id')) return 'sell:' + inp.getAttribute('data-sell-id');
+      return '';
+    }
+    document.querySelectorAll('.qty-input').forEach(function (inp) {
+      var key = qtyKey(inp);
+      if (key) qtyState[key] = inp.value;
+    });
+    var active = document.activeElement;
+    activeKey = qtyKey(active);
+    if (activeKey) {
+      try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (e) {}
+    }
     var sellItems = ['food', 'wood', 'stone', 'herbs'].map(function (id) {
       var r = D.RESOURCES[id];
       return { id: id, kind: 'resource', name: r.name, glyph: r.glyph, color: r.color, stock: UI.game.resources[id] || 0, price: E.sellPriceOf(id) };
@@ -1199,7 +1216,7 @@
       return { id: id, kind: 'pill', name: p.name, glyph: p.glyph, color: p.color || '#b08a4a', stock: UI.game.pills[id] || 0, price: E.sellPriceOf(id) };
     }));
     document.getElementById('view').innerHTML = '<div class="view-page">' +
-      '<div class="view-head"><div><p class="eyebrow">MOUNTAIN MARKET</p><h2>山下坊市</h2><p>胡商的车马每月来两次。灵石带够，话别说太满。</p></div><div class="view-head-actions"><span class="capacity-note">' + restock + ' 日后换货</span><span class="capacity-note">灵石 ' + fmt(UI.game.resources.stones) + '</span></div></div>' +
+      '<div class="view-head"><div><p class="eyebrow">MOUNTAIN MARKET</p><h2>山下坊市</h2><p>胡商的车马每月来两次。灵石带够，话别说太满。</p></div><div class="view-head-actions"><span class="capacity-note">' + (UI.game.market.hold ? '议价中 · 换货暂缓' : restock + ' 日后换货') + '</span><span class="capacity-note">灵石 ' + fmt(UI.game.resources.stones) + '</span><button class="btn btn-primary btn-sm market-buy-all" data-action="buy-all" ' + (canAll ? '' : 'disabled') + '>全部购买 · ' + fmt(total) + ' 石</button></div></div>' +
       '<div class="market-layout"><section class="panel"><div class="panel-head"><h3>今日货单</h3><span class="panel-mark">买</span></div><div class="market-grid">' +
       (stock.length ? stock.map(function (it, i) {
         var meta = it.kind === 'pill' ? D.PILLS[it.id] : D.RESOURCES[it.id];
@@ -1207,8 +1224,9 @@
         var glyph = meta ? meta.glyph : '货';
         var color = meta && meta.color ? meta.color : '#8f6a43';
         var custom = it.gift ? '' : '<span class="qty-control"><input class="qty-input" type="number" inputmode="numeric" min="1" max="' + it.qty + '" value="1" data-buy-index="' + i + '" aria-label="购买' + h(name) + '数量"><button class="btn btn-ghost btn-xs" data-action="buy-custom" data-index="' + i + '">购</button></span>';
+        var allItem = (!it.gift && it.qty > 1) ? '<button class="btn btn-ghost btn-xs" data-action="buy-all-item" data-index="' + i + '">全购</button>' : '';
         return '<article class="market-item"><span class="market-glyph" style="--mc:' + color + '">' + glyph + '</span><div class="market-item-main"><b>' + h(name) + '</b><small>' + (it.gift ? '行商相赠' : it.kind === 'pill' ? '丹药' : '材料') + ' · 余 ' + it.qty + '</small></div><div class="market-price">' + (it.gift ? '赠' : it.price + ' 石') + '</div>' +
-          '<div class="market-actions"><button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="1">购 1</button>' + (it.qty >= 5 ? '<button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="5">购 5</button>' : '') + custom + '</div></article>';
+          '<div class="market-actions"><button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="1">购 1</button>' + (it.qty >= 5 ? '<button class="btn btn-ghost btn-xs" data-action="buy" data-index="' + i + '" data-qty="5">购 5</button>' : '') + allItem + custom + '</div></article>';
       }).join('') : '<p class="muted">货架空了，等下一班商队。</p>') +
       '</div></section>' +
       '<aside class="panel"><div class="panel-head"><h3>卖出</h3><span class="panel-mark">卖</span></div>' +
@@ -1218,6 +1236,21 @@
           '<button class="btn btn-ghost btn-xs" data-action="sell" data-id="' + it.id + '" data-qty="5" ' + (it.stock < 5 ? 'disabled' : '') + '>卖 5</button></div></div>';
       }).join('') +
       '<div class="market-note">' + seal('商') + '<p>材料与丹药都可出手。声望越高，行商给的面子越大；参研天机推演还能再压一压价。</p></div></aside></div></div>';
+    Object.keys(qtyState).forEach(function (key) {
+      var inp = null;
+      if (key.indexOf('buy:') === 0) inp = document.querySelector('.qty-input[data-buy-index="' + key.slice(4) + '"]');
+      else if (key.indexOf('sell:') === 0) inp = document.querySelector('.qty-input[data-sell-id="' + key.slice(5) + '"]');
+      if (inp) inp.value = qtyState[key];
+    });
+    if (activeKey) {
+      var focusInp = null;
+      if (activeKey.indexOf('buy:') === 0) focusInp = document.querySelector('.qty-input[data-buy-index="' + activeKey.slice(4) + '"]');
+      else if (activeKey.indexOf('sell:') === 0) focusInp = document.querySelector('.qty-input[data-sell-id="' + activeKey.slice(5) + '"]');
+      if (focusInp) {
+        focusInp.focus();
+        try { focusInp.setSelectionRange(selStart, selEnd); } catch (e) {}
+      }
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1401,6 +1434,45 @@
       (b.type !== 'gate' ? '<button class="btn btn-ghost" data-action="demolish" data-id="' + b.id + '">拆除</button>' : '') +
       '</div></div></div>';
     openModal(content, { class: 'building-modal-wrap', dismissible: true, key: 'building:' + id });
+  }
+
+  function openBuildingType(type) {
+    var def = D.BUILDINGS[type];
+    if (!def) return;
+    var instances = UI.game.buildings.filter(function (b) { return b.type === type; }).sort(function (a, b) { return (a.y + a.x) - (b.y + b.x); });
+    var constructing = instances.filter(function (b) { return b.construction > 0; }).length;
+    var maxLevel = instances.reduce(function (level, b) { return Math.max(level, b.level || 1); }, 0);
+    var locked = def.unlock && !E.hasResearch(UI.game, def.unlock);
+    var can = E.canAfford(UI.game, def.cost);
+    var uniqueBlocked = def.unique && instances.length > 0;
+    var category = D.BUILD_CATEGORIES.find(function (c) { return c.id === def.category; }) || { name: '建筑' };
+    var cost = Object.keys(def.cost).length ? Object.keys(def.cost).map(function (k) {
+      return '<span class="cost-chip ' + ((UI.game.resources[k] || 0) < def.cost[k] ? 'lack' : '') + '">' + (D.RESOURCES[k] ? D.RESOURCES[k].glyph : k) + ' ' + def.cost[k] + '</span>';
+    }).join('') : '<span class="cost-chip">初始建筑</span>';
+    var instancesHtml = instances.length ? '<div class="type-instance-list">' + instances.map(function (b) {
+      var building = b.construction > 0;
+      return '<button class="type-instance" data-action="open-building" data-id="' + b.id + '">' +
+        '<span class="built-card-glyph">' + h(def.glyph) + '</span>' +
+        '<span class="type-instance-main"><b>Lv.' + b.level + '</b><small>' + (building ? '营造中 · 还需 ' + Math.ceil(b.construction) + ' 日' : b.workers.length + ' / ' + E.slotsOf(b) + ' 人当值') + '</small></span>' +
+        '<span class="type-instance-arrow">›</span></button>';
+    }).join('') + '</div>' : '<div class="built-empty">这一类的建筑还没有建。下面可以直接开工。</div>';
+    var newBlock;
+    if (locked) {
+      newBlock = '<div class="type-new-box is-locked"><b>尚未参研</b><p>先在藏经阁参研相关节点，才能建造' + h(def.name) + '。</p></div>';
+    } else if (uniqueBlocked) {
+      newBlock = '<div class="type-new-box is-locked"><b>仅此一座</b><p>' + h(def.name) + '已经建成，不能再建第二座。</p></div>';
+    } else {
+      newBlock = '<div class="type-new-box"><div class="cost-row">' + cost + '</div><button class="btn ' + (can ? 'btn-primary' : 'btn-ghost') + ' btn-block" data-action="select-build" data-type="' + type + '" ' + (can ? '' : 'disabled') + '>' + (can ? '自动择地建造' : '材料不足') + '</button><p class="type-new-hint">山门会依山势自动选一块空地开工。</p></div>';
+    }
+    var content = '<div class="modal-head building-modal-head"><div><p class="eyebrow">BUILDING TYPE</p><h2>' + h(def.name) + '</h2><p class="detail-sub">' + h(def.effect) + '</p></div><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div>' +
+      '<div class="building-portrait" aria-hidden="true">' + buildingPortrait(type, maxLevel || 1) + '</div>' +
+      '<div class="detail-body"><p class="detail-bio">' + h(def.desc) + '</p>' +
+      (UI.settings.autoPause ? '<div class="pause-note">时间已暂停 · 可安心查看</div>' : '') +
+      '<div class="building-facts"><span>类别 <b>' + h(category.name) + '</b></span><span>已建 <b>' + instances.length + '</b></span><span>灵气 <b>+' + ((def.aura || 0) * (maxLevel || 1)) + '</b></span><span>风水 <b>+' + ((def.fengShui || 0) * (maxLevel || 1)) + '</b></span>' + (def.slots ? '<span>当值位 <b>' + def.slots + '</b></span>' : '') + '</div>' +
+      '<div class="detail-section"><div class="detail-section-head"><h4>已建好</h4><span>' + instances.length + ' 座' + (constructing ? ' · ' + constructing + ' 处在建' : '') + '</span></div>' + instancesHtml + '</div>' +
+      '<div class="detail-section"><div class="detail-section-head"><h4>新建一座</h4><span>自动择地</span></div>' + newBlock + '</div>' +
+      '</div>';
+    openModal(content, { class: 'building-modal-wrap', dismissible: true, key: 'building-type:' + type });
   }
 
   function portraitExtras(type) {
@@ -1676,7 +1748,8 @@
       case 'backdrop-close': if (el === el.parentElement || el.classList.contains('modal-backdrop')) closeModal(); break;
       case 'filter': UI.filter = value; renderDisciples(); break;
       case 'open-disciple': UI.tab = 'disciples'; renderAll(); openDisciple(id); break;
-      case 'open-building': UI.tab = 'sect'; renderAll(); openBuilding(id); break;
+      case 'open-building-type': UI.tab = 'build'; renderAll(); openBuildingType(el.getAttribute('data-type')); break;
+      case 'open-building': renderAll(); openBuilding(id); break;
       case 'assign': {
         var res = E.assign(UI.game, id, el.getAttribute('data-building') || null);
         if (!res.ok) toast(res.msg, 'warn');
@@ -1753,9 +1826,10 @@
         var built = E.buildAuto(UI.game, buildType);
         if (!built.ok) { toast(built.msg, 'warn'); break; }
         UI.buildType = null;
-        UI.tab = 'sect';
+        UI.tab = 'build';
         UI.selectedBuilding = built.building.id;
         saveNow();
+        closeModal();
         renderAll();
         toast(def.name + '已在山中择地开工。', 'good');
         break;
@@ -1825,6 +1899,24 @@
         var buyQty = buyInput ? Number(buyInput.value) : 1;
         var customBuy = E.marketBuy(UI.game, buyIndex, buyQty);
         if (!customBuy.ok) toast(customBuy.msg, 'warn'); else { saveNow(); renderAll(); }
+        break;
+      }
+      case 'buy-all': {
+        var buyAll = E.marketBuyAll(UI.game);
+        if (!buyAll.ok) toast(buyAll.msg, 'warn');
+        else {
+          saveNow();
+          renderAll();
+          toast(buyAll.total ? '买下全部货物，共花 ' + buyAll.total + ' 石。' : '收下全部货物。', 'good');
+        }
+        break;
+      }
+      case 'buy-all-item': {
+        var allIndex = Number(el.getAttribute('data-index'));
+        var allItem = UI.game.market.stock[allIndex];
+        if (!allItem) break;
+        var oneAll = E.marketBuy(UI.game, allIndex, allItem.qty);
+        if (!oneAll.ok) toast(oneAll.msg, 'warn'); else { saveNow(); renderAll(); }
         break;
       }
       case 'sell':
